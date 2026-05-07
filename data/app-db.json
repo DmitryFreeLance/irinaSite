@@ -1,0 +1,23 @@
+{
+  "users": [
+    {
+      "id": "e13b7fab-2037-4450-9655-eb9ff95855bd",
+      "email": "admin.umkart.9x7q2@bk.ru",
+      "passwordHash": "$2a$10$VHNjC4UdKmwfvMiZO.rhk.tG2UtWP8KeKqoz9s2hoH7AfsD.w4C7K",
+      "role": "admin",
+      "subscriptionUntil": null,
+      "viewedMapKeys": [],
+      "createdAt": "2026-05-07T07:54:38.260Z"
+    }
+  ],
+  "maps": [],
+  "payments": [],
+  "promoCodes": [],
+  "catalogAccess": {
+    "history": true,
+    "biology": false,
+    "geography": false,
+    "physics": false,
+    "chemistry": false
+  }
+}

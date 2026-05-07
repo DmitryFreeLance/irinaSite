@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>УМКарта | Интеллект-карты для школы</title>
+    <link rel="icon" href="./assets/logo.jpg" />
+    <link rel="apple-touch-icon" href="./assets/logo.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Nunito:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="./assets/logo.jpg" alt="Логотип УМКарта" class="brand__logo" />
+          <div>
+            <p class="brand__title">УМКарта</p>
+            <p class="brand__subtitle">Интеллект-карты для школьной программы</p>
+          </div>
+        </div>
+
+        <nav class="menu">
+          <button class="menu__item is-active" data-screen="teacher">Главная</button>
+          <button class="menu__item" data-screen="student">Школьнику</button>
+          <button class="menu__item" data-screen="pricing">Тарифы</button>
+          <button class="menu__item" data-screen="cabinet">Личный кабинет</button>
+          <button id="adminMenuButton" class="menu__item admin-only" data-screen="admin" hidden>
+            Админка
+          </button>
+        </nav>
+
+        <section class="sidebar-card sidebar-card--promo">
+          <p class="sidebar-card__label">Маршрут ученика</p>
+          <p class="sidebar-card__lead">Один понятный сценарий для подготовки к любому параграфу.</p>
+          <div class="sidebar-pill-list">
+            <span class="sidebar-pill">1. Выбери предмет и класс</span>
+            <span class="sidebar-pill">2. Открой нужный параграф</span>
+            <span class="sidebar-pill">3. Раскрой ветви и повтори тему</span>
+            <span class="sidebar-pill">4. Сверни карту и проверь себя</span>
+          </div>
+          <p class="sidebar-card__meta">Первые 3 карты доступны бесплатно после регистрации.</p>
+        </section>
+
+        <section class="sidebar-card" id="sidebarAuthCard">
+          <p class="sidebar-card__label">Статус доступа</p>
+          <p id="sidebarAuthText">Гость. Для просмотра карт нужна регистрация.</p>
+          <p id="sidebarAuthExtra" class="sidebar-card__meta">После входа здесь появится ваш текущий тариф.</p>
+        </section>
+      </aside>
+
+      <main class="main-content">
+        <header class="hero">
+          <div>
+            <h1>Учебники и интеллект-карты</h1>
+            <p>
+              Выберите предмет, затем класс и параграф. В каждой теме ветви карты можно
+              сворачивать и разворачивать для повторения материала.
+            </p>
+          </div>
+          <div class="hero__badge">Первые 3 карты бесплатно</div>
+        </header>
+
+        <section class="screen is-visible" data-screen-panel="teacher">
+          <h2>Каталог учебников</h2>
+          <p class="section-note">
+            Доступные предметы выделены ярко. Закрытые предметы можно открыть в админке.
+          </p>
+
+          <div id="subjectGrid" class="subject-grid" aria-live="polite"></div>
+
+          <div class="selectors">
+            <label>
+              Класс
+              <select id="classSelect" disabled>
+                <option>Сначала выберите предмет</option>
+              </select>
+            </label>
+            <label>
+              Параграф
+              <select id="paragraphSelect" disabled>
+                <option>Сначала выберите класс</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="mapAccessBanner" class="map-access-banner" hidden></div>
+
+          <div class="map-workspace">
+            <div class="map-workspace__header">
+              <div>
+                <h3 id="mapTitle">Выберите параграф</h3>
+                <p id="mapMeta">Карта появится здесь</p>
+              </div>
+              <button id="openMapFullscreen" type="button" class="map-fullscreen-btn" disabled>
+                Открыть карту на весь экран
+              </button>
+            </div>
+            <div id="mapTree" class="map-tree"></div>
+          </div>
+        </section>
+
+        <section class="screen" data-screen-panel="student">
+          <h2>Подсказки для школьника</h2>
+          <img src="./assets/screen-study-tips.jpg" alt="Подсказки для ученика" class="ref-image ref-image--full" />
+          <p class="section-note">
+            Работайте так: сначала сверните все ветви, затем восстановите структуру в тетради,
+            после этого проговорите тему вслух по плану карты.
+          </p>
+        </section>
+
+        <section class="screen" data-screen-panel="pricing">
+          <h2>Тарифы</h2>
+          <div class="pricing-hero">
+            <h3>ТАРИФЫ И ПОДПИСКИ УМКарта</h3>
+            <p>Первые три карты бесплатно. После этого доступ открывается по подписке.</p>
+          </div>
+          <div class="pricing-cards pricing-cards--hero">
+            <article class="pricing-card pricing-card--start">
+              <h3>1 МЕСЯЦ<br />«СТАРТ»</h3>
+              <div class="pricing-card__content">
+                <p class="pricing-card__icon" aria-hidden="true">🗓️</p>
+                <p class="pricing-card__desc">Доступ ко всем предметам и классам</p>
+                <p class="pricing-card__price">400 ₽</p>
+              </div>
+              <button data-plan-id="start" class="plan-buy-button pricing-card__button">ПОДПИСАТЬСЯ<br />НА МЕСЯЦ</button>
+            </article>
+            <article class="pricing-card pricing-card--quarter">
+              <h3>3 МЕСЯЦА<br />«КВАРТАЛ»</h3>
+              <div class="pricing-card__content">
+                <p class="pricing-card__icon" aria-hidden="true">📘</p>
+                <p class="pricing-card__desc">Доступ ко всем предметам и классам</p>
+                <p class="pricing-card__discount">-10% ЭКОНОМИЯ</p>
+                <p class="pricing-card__old">1 200 ₽ (400x3)</p>
+                <p class="pricing-card__price">1 080 ₽</p>
+              </div>
+              <button data-plan-id="quarter" class="plan-buy-button pricing-card__button">ПОДПИСАТЬСЯ<br />НА 3 МЕСЯЦА</button>
+            </article>
+            <article class="pricing-card pricing-card--year">
+              <h3>12 МЕСЯЦЕВ<br />«ГОД ЗНАНИЙ»</h3>
+              <div class="pricing-card__content">
+                <p class="pricing-card__icon" aria-hidden="true">👑</p>
+                <p class="pricing-card__desc">Доступ ко всем предметам и классам</p>
+                <p class="pricing-card__discount">-20% ЭКОНОМИЯ</p>
+                <p class="pricing-card__old">4 800 ₽ (400x12)</p>
+                <p class="pricing-card__price">3 840 ₽</p>
+              </div>
+              <button data-plan-id="year" class="plan-buy-button pricing-card__button">ПОДПИСАТЬСЯ<br />НА ГОД</button>
+            </article>
+          </div>
+          <p class="pricing-cards__note">Первые три карты бесплатно после регистрации</p>
+          <p class="pricing-legal">
+            Оплачивая подписку, вы подтверждаете согласие с
+            <a href="./assets/oferta-umkart.docx" download>Публичной офертой</a>.
+          </p>
+          <p id="pricingStatus" class="section-note"></p>
+        </section>
+
+        <section class="screen" data-screen-panel="cabinet">
+          <h2>Личный кабинет</h2>
+          <div class="cabinet-grid">
+            <div class="cabinet-card" id="authFormsCard">
+              <h3>Вход и регистрация</h3>
+              <form id="loginForm" class="auth-form">
+                <label>
+                  Email
+                  <input type="email" id="loginEmail" placeholder="you@example.com" required />
+                </label>
+                <label>
+                  Пароль
+                  <input type="password" id="loginPassword" placeholder="******" required />
+                </label>
+                <button type="submit">Войти</button>
+              </form>
+              <form id="registerForm" class="auth-form auth-form--secondary">
+                <label>
+                  Email
+                  <input type="email" id="registerEmail" placeholder="you@example.com" required />
+                </label>
+                <label>
+                  Пароль
+                  <input type="password" id="registerPassword" placeholder="минимум 6 символов" required />
+                </label>
+                <button type="submit">Зарегистрироваться</button>
+              </form>
+              <p class="auth-legal">
+                Регистрируясь, вы принимаете условия
+                <a href="./assets/oferta-umkart.docx" download>Публичной оферты</a>
+                и
+                <a href="#" id="personalDataConsentLink">согласия на обработку персональных данных</a>.
+              </p>
+              <p id="authStatus" class="section-note"></p>
+            </div>
+
+            <div class="cabinet-card">
+              <h3>Ваш доступ</h3>
+              <div id="profileSummary">
+                <p>Вы не авторизованы.</p>
+              </div>
+              <div class="promo-block">
+                <p class="promo-block__title">Промокод</p>
+                <div class="promo-block__row">
+                  <input
+                    id="promoCodeInput"
+                    type="text"
+                    placeholder="Введите промокод"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <button id="promoApplyButton" type="button">Применить</button>
+                </div>
+                <p id="promoStatus" class="section-note"></p>
+              </div>
+              <div class="cabinet-actions">
+                <button id="cabinetBuyStart" data-plan-id="start" class="plan-buy-button plan-buy-button--small">
+                  Оформить «Старт»
+                </button>
+                <button
+                  id="cabinetBuyQuarter"
+                  data-plan-id="quarter"
+                  class="plan-buy-button plan-buy-button--small"
+                >
+                  Оформить «Квартал»
+                </button>
+                <button id="cabinetBuyYear" data-plan-id="year" class="plan-buy-button plan-buy-button--small">
+                  Оформить «Год знаний»
+                </button>
+              </div>
+              <div class="cabinet-actions">
+                <button id="goToAdminFromCabinet" type="button" class="admin-only" hidden>
+                  Открыть админку
+                </button>
+                <button id="logoutButton" type="button" hidden>Выйти</button>
+              </div>
+              <p id="cabinetStatus" class="section-note"></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen" data-screen-panel="admin">
+          <h2>Админка загрузки карт</h2>
+          <p class="section-note">
+            Выберите предмет, класс, один или несколько параграфов и загрузите карту в формате
+            (`txt`, `xmind`, `xmmap`, `pdf`).
+          </p>
+
+          <div class="admin-grid">
+            <label>
+              Предмет
+              <select id="adminSubjectSelect"></select>
+            </label>
+            <label>
+              Класс
+              <select id="adminClassSelect"></select>
+            </label>
+            <label class="admin-grid__wide">
+              Параграфы (можно выбрать несколько)
+              <select id="adminParagraphSelect" multiple size="10"></select>
+            </label>
+            <label class="admin-grid__wide">
+              Файл карты
+              <input
+                id="adminFileInput"
+                type="file"
+                accept=".txt,.md,.xmind,.xmmap,.pdf,text/plain,text/markdown,application/xml,text/xml,application/pdf"
+              />
+            </label>
+          </div>
+
+          <div class="admin-actions">
+            <button id="adminSaveButton" type="button">Загрузить и привязать</button>
+            <button id="adminClearButton" type="button" class="admin-actions__ghost">
+              Очистить привязку для выбранных параграфов
+            </button>
+            <button id="adminGeneratePromoButton" type="button" class="admin-actions__ghost">
+              Сгенерировать промокод
+            </button>
+            <button id="adminShowPromosButton" type="button" class="admin-actions__ghost">
+              Просмотр неактивированных промокодов
+            </button>
+          </div>
+
+          <p id="adminStatus" class="section-note">Пока привязок не меняли.</p>
+
+          <div class="admin-bindings">
+            <h3>Привязки в выбранном классе</h3>
+            <ul id="adminBindingsList"></ul>
+          </div>
+          <div class="admin-bindings">
+            <h3>Доступ к каталогу учебников</h3>
+            <ul id="adminCatalogAccessList">
+              <li>Загрузка доступа...</li>
+            </ul>
+          </div>
+          <div class="admin-bindings">
+            <h3>Промокоды</h3>
+            <ul id="adminPromoList">
+              <li>Нажмите «Просмотр неактивированных промокодов».</li>
+            </ul>
+          </div>
+        </section>
+
+        <footer class="site-footer">
+          <p class="site-footer__copyright">UMKART 2026 - Все права защищены.</p>
+          <p class="site-footer__seller">
+            Продавец: Акифьева Ирина Вячеславовна, ИНН 631224366168.
+          </p>
+          <p class="site-footer__contact">
+            Почта для связи:
+            <a href="mailto:UMKarta@mail.ru">UMKarta@mail.ru</a>
+          </p>
+        </footer>
+      </main>
+    </div>
+
+    <section id="mapFullscreen" class="map-fullscreen" hidden>
+      <div class="map-fullscreen__panel" role="dialog" aria-modal="true">
+        <header class="map-fullscreen__header">
+          <div>
+            <h2 id="mapFullscreenTitle">Карта</h2>
+            <p id="mapFullscreenMeta">Полноэкранный режим</p>
+          </div>
+          <button id="closeMapFullscreen" type="button" class="map-fullscreen__close">
+            Закрыть
+          </button>
+        </header>
+        <div id="mapTreeFullscreen" class="map-tree map-tree--fullscreen"></div>
+      </div>
+    </section>
+
+    <section id="appModal" class="app-modal" hidden>
+      <div class="app-modal__panel" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+        <button id="appModalClose" type="button" class="app-modal__close" aria-label="Закрыть">
+          ×
+        </button>
+        <div class="app-modal__icon" aria-hidden="true">🔒</div>
+        <h3 id="appModalTitle">Нужен вход в аккаунт</h3>
+        <p id="appModalText">
+          Для оформления подписки нужно войти или зарегистрироваться.
+        </p>
+        <button id="appModalAction" type="button" class="app-modal__action">
+          Понятно
+        </button>
+      </div>
+    </section>
+
+    <script type="module" src="./script.js"></script>
+  </body>
+</html>

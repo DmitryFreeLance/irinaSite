@@ -208,7 +208,13 @@ function setupAuthPanel() {
     });
 
     if (!response.ok) {
-      authStatus.textContent = response.data?.error || "Не удалось войти.";
+      const message = response.data?.error || "Не удалось войти.";
+      authStatus.textContent = message;
+      showAppModal(message, {
+        title: "Ошибка входа",
+        icon: "⚠️",
+        actionText: "Понятно",
+      });
       return;
     }
 
@@ -235,7 +241,13 @@ function setupAuthPanel() {
     });
 
     if (!response.ok) {
-      authStatus.textContent = response.data?.error || "Не удалось зарегистрироваться.";
+      const message = response.data?.error || "Не удалось зарегистрироваться.";
+      authStatus.textContent = message;
+      showAppModal(message, {
+        title: "Ошибка регистрации",
+        icon: "⚠️",
+        actionText: "Понятно",
+      });
       return;
     }
 
@@ -261,6 +273,11 @@ function setupAuthPanel() {
     await refreshPromoState();
     await refreshSubscriptionStatus();
     authStatus.textContent = "Вы вышли из аккаунта.";
+    showAppModal("Вы вышли из личного кабинета.", {
+      title: "Выход выполнен",
+      icon: "👋",
+      actionText: "Хорошо",
+    });
   });
 
   goToAdminFromCabinet.addEventListener("click", () => {

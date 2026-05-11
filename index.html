@@ -9,14 +9,32 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Nunito:wght@600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Nunito:wght@600;700;800&family=Space+Grotesk:wght@600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <header class="mobile-topbar">
+      <button id="mobileMenuButton" class="mobile-topbar__menu" type="button" aria-label="Открыть меню">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <div class="mobile-topbar__center">
+        <p class="mobile-topbar__brand">УМКарта</p>
+        <p id="mobileCurrentScreen" class="mobile-topbar__screen">Главная</p>
+      </div>
+    </header>
+    <div id="mobileSidebarBackdrop" class="mobile-sidebar-backdrop" hidden></div>
+
     <div class="page-shell">
       <aside class="sidebar">
+        <div class="sidebar__mobile-actions">
+          <button id="mobileMenuClose" type="button" class="sidebar__close-btn" aria-label="Закрыть меню">
+            Закрыть
+          </button>
+        </div>
         <div class="brand">
           <img src="./assets/logo.jpg" alt="Логотип УМКарта" class="brand__logo" />
           <div>
@@ -57,8 +75,9 @@
       <main class="main-content">
         <header class="hero">
           <div>
-            <h1>Учебники и интеллект-карты</h1>
-            <p>
+            <p id="heroScreenChip" class="hero__screen-chip">Главная</p>
+            <h1 id="heroTitle">Учебники и интеллект-карты</h1>
+            <p id="heroDescription">
               Выберите предмет, затем класс и параграф. В каждой теме ветви карты можно
               сворачивать и разворачивать для повторения материала.
             </p>
@@ -286,6 +305,33 @@
           </div>
 
           <p id="adminStatus" class="section-note">Пока привязок не меняли.</p>
+
+          <div class="admin-bindings admin-bindings--stats">
+            <h3>Статистика переходов</h3>
+            <ul class="deep-links-list">
+              <li><a href="https://umkarta.ru/?enter=tg" target="_blank" rel="noopener">https://umkarta.ru/?enter=tg</a></li>
+              <li><a href="https://umkarta.ru/?enter=vk" target="_blank" rel="noopener">https://umkarta.ru/?enter=vk</a></li>
+              <li><a href="https://umkarta.ru/?enter=another" target="_blank" rel="noopener">https://umkarta.ru/?enter=another</a></li>
+              <li><a href="https://umkarta.ru/" target="_blank" rel="noopener">https://umkarta.ru/ (обычная ссылка)</a></li>
+            </ul>
+            <div id="adminTrafficStats" class="stats-grid">
+              <article class="stats-card"><p>Всего переходов</p><strong>0</strong></article>
+              <article class="stats-card"><p>Обычная ссылка</p><strong>0</strong></article>
+              <article class="stats-card"><p>enter=tg</p><strong>0</strong></article>
+              <article class="stats-card"><p>enter=vk</p><strong>0</strong></article>
+              <article class="stats-card"><p>enter=another</p><strong>0</strong></article>
+            </div>
+            <ul id="adminStatsRecentList">
+              <li>Пока нет данных.</li>
+            </ul>
+          </div>
+
+          <div class="admin-bindings">
+            <h3>Пользователи с оплаченной подпиской</h3>
+            <ul id="adminPaidUsersList">
+              <li>Пока нет активных оплаченных подписок.</li>
+            </ul>
+          </div>
 
           <div class="admin-bindings">
             <h3>Привязки в выбранном классе</h3>

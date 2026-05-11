@@ -28,6 +28,7 @@ const PLANS = [
 
 const DISCOUNT_PROMO_CODES = new Set(["УЧУСЬ1.0", "МНЕМО1.0", "АРТ1.0"]);
 const DISCOUNT_PROMO_PERCENT = 10;
+const ENTER_SOURCES = new Set(["tg", "vk", "another"]);
 const DEFAULT_SUBJECT_ACCESS = {
   history: true,
   biology: false,
@@ -79,12 +80,61 @@ function ensureCatalogAccess(db) {
   });
 }
 
+function ensureParagraphOverrides(db) {
+  if (!db.paragraphOverrides || typeof db.paragraphOverrides !== "object") {
+    db.paragraphOverrides = {};
+  }
+}
+
+function ensureTrafficStats(db) {
+  if (!db.trafficStats || typeof db.trafficStats !== "object") {
+    db.trafficStats = {};
+  }
+  if (!db.trafficStats.counts || typeof db.trafficStats.counts !== "object") {
+    db.trafficStats.counts = {};
+  }
+  if (!Array.isArray(db.trafficStats.recent)) {
+    db.trafficStats.recent = [];
+  }
+  const keys = ["total", "direct", "tg", "vk", "another"];
+  keys.forEach((key) => {
+    if (typeof db.trafficStats.counts[key] !== "number") {
+      db.trafficStats.counts[key] = 0;
+    }
+  });
+}
+
+function applyParagraphOverridesToCatalog(catalog, db) {
+  ensureParagraphOverrides(db);
+  return catalog.map((subject) => {
+    if (!subject.grades) return subject;
+
+    const subjectOverrides = db.paragraphOverrides[subject.id] || {};
+    const grades = Object.fromEntries(
+      Object.entries(subject.grades).map(([gradeId, grade]) => {
+        const gradeOverrides = subjectOverrides[gradeId] || {};
+        const paragraphs = (grade.paragraphs || []).map((paragraph) => {
+          const override = gradeOverrides[paragraph.id];
+          if (typeof override !== "string" || !override.trim()) {
+            return paragraph;
+          }
+          return { ...paragraph, title: override.trim().slice(0, 220) };
+        });
+        return [gradeId, { ...grade, paragraphs }];
+      }),
+    );
+
+    return { ...subject, grades };
+  });
+}
+
 function catalogFromDb(db) {
   ensureCatalogAccess(db);
-  return baseCatalog().map((subject) => ({
+  const catalog = baseCatalog().map((subject) => ({
     ...subject,
     planned: !Boolean(db.catalogAccess[subject.id]),
   }));
+  return applyParagraphOverridesToCatalog(catalog, db);
 }
 
 function getPlanById(planId) {
@@ -99,6 +149,8 @@ function loadDb() {
   if (!db.payments) db.payments = [];
   if (!db.promoCodes) db.promoCodes = [];
   ensureCatalogAccess(db);
+  ensureParagraphOverrides(db);
+  ensureTrafficStats(db);
   return db;
 }
 
@@ -206,6 +258,19 @@ function generateTrialPromoCode(db) {
 
 function sanitizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function resolveEnterSource(raw) {
+  const normalized = String(raw || "").trim().toLowerCase();
+  return ENTER_SOURCES.has(normalized) ? normalized : "direct";
+}
+
+function paragraphTitleFromSourceName(sourceName) {
+  const raw = String(sourceName || "").trim();
+  const parsed = path.parse(raw);
+  const candidate = String(parsed.name || raw || "").trim();
+  if (!candidate) return "Без названия";
+  return candidate.slice(0, 220);
 }
 
 function sanitizeMapNode(node, depth = 0) {
@@ -677,6 +742,25 @@ app.use(
   }),
 );
 
+app.use((req, _res, next) => {
+  if (req.method === "GET" && req.path === "/") {
+    const source = resolveEnterSource(req.query?.enter);
+    mutateDb((db) => {
+      ensureTrafficStats(db);
+      db.trafficStats.counts.total += 1;
+      db.trafficStats.counts[source] += 1;
+      db.trafficStats.recent.unshift({
+        at: new Date().toISOString(),
+        source,
+      });
+      if (db.trafficStats.recent.length > 200) {
+        db.trafficStats.recent = db.trafficStats.recent.slice(0, 200);
+      }
+    });
+  }
+  next();
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, now: new Date().toISOString() });
 });
@@ -884,8 +968,13 @@ app.post("/api/admin/maps", requireAuth, requireAdmin, async (req, res) => {
     preserveText,
   });
   const map = transformed.map;
+  const autoParagraphTitle = paragraphTitleFromSourceName(sourceName);
 
   const changed = mutateDb((db) => {
+    ensureParagraphOverrides(db);
+    if (!db.paragraphOverrides[subjectId]) db.paragraphOverrides[subjectId] = {};
+    if (!db.paragraphOverrides[subjectId][gradeId]) db.paragraphOverrides[subjectId][gradeId] = {};
+
     const now = new Date().toISOString();
     const list = [];
 
@@ -911,13 +1000,20 @@ app.post("/api/admin/maps", requireAuth, requireAdmin, async (req, res) => {
         row.map = map;
         row.updatedAt = now;
       }
+      db.paragraphOverrides[subjectId][gradeId][paragraphId] = autoParagraphTitle;
       list.push({ key: row.key, paragraphId: row.paragraphId, updatedAt: row.updatedAt });
     });
 
     return list;
   });
 
-  res.json({ ok: true, updated: changed.length, records: changed, ai: transformed.ai });
+  res.json({
+    ok: true,
+    updated: changed.length,
+    records: changed,
+    paragraphTitle: autoParagraphTitle,
+    ai: transformed.ai,
+  });
 });
 
 app.delete("/api/admin/maps", requireAuth, requireAdmin, (req, res) => {
@@ -974,6 +1070,91 @@ app.post("/api/admin/catalog-access", requireAuth, requireAdmin, (req, res) => {
   });
 
   res.status(result.status).json(result.body);
+});
+
+app.post("/api/admin/paragraph-title", requireAuth, requireAdmin, (req, res) => {
+  const subjectId = String(req.body.subjectId || "");
+  const gradeId = String(req.body.gradeId || "");
+  const paragraphId = String(req.body.paragraphId || "");
+  const title = String(req.body.title || "").trim();
+
+  if (!subjectId || !gradeId || !paragraphId) {
+    res.status(400).json({ error: "Нужны subjectId, gradeId и paragraphId." });
+    return;
+  }
+
+  if (!title || title.length < 2) {
+    res.status(400).json({ error: "Название параграфа должно быть не короче 2 символов." });
+    return;
+  }
+
+  const result = mutateDb((db) => {
+    const subject = baseCatalog().find((item) => item.id === subjectId);
+    if (!subject || !subject.grades?.[gradeId]) {
+      return { status: 404, body: { error: "Предмет или класс не найден." } };
+    }
+
+    const paragraphExists = subject.grades[gradeId].paragraphs.some((item) => item.id === paragraphId);
+    if (!paragraphExists) {
+      return { status: 404, body: { error: "Параграф не найден." } };
+    }
+
+    ensureParagraphOverrides(db);
+    if (!db.paragraphOverrides[subjectId]) db.paragraphOverrides[subjectId] = {};
+    if (!db.paragraphOverrides[subjectId][gradeId]) db.paragraphOverrides[subjectId][gradeId] = {};
+    db.paragraphOverrides[subjectId][gradeId][paragraphId] = title.slice(0, 220);
+
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        subjectId,
+        gradeId,
+        paragraphId,
+        title: db.paragraphOverrides[subjectId][gradeId][paragraphId],
+      },
+    };
+  });
+
+  res.status(result.status).json(result.body);
+});
+
+app.get("/api/admin/stats", requireAuth, requireAdmin, (_req, res) => {
+  const db = loadDb();
+  ensureTrafficStats(db);
+
+  const paidMap = new Map();
+  db.payments.forEach((payment) => {
+    if (String(payment.status || "").toLowerCase() !== "succeeded") return;
+    const userId = String(payment.userId || "");
+    if (!userId) return;
+    const existing = paidMap.get(userId);
+    const existingTs = existing ? new Date(existing.updatedAt || existing.createdAt || 0).getTime() : 0;
+    const nextTs = new Date(payment.updatedAt || payment.createdAt || 0).getTime();
+    if (!existing || nextTs >= existingTs) {
+      paidMap.set(userId, payment);
+    }
+  });
+
+  const paidSubscribers = db.users
+    .filter((user) => activeSubscription(user) && paidMap.has(user.id))
+    .map((user) => {
+      const payment = paidMap.get(user.id);
+      const plan = getPlanById(payment?.planId);
+      return {
+        email: user.email,
+        planId: payment?.planId || "",
+        planTitle: plan?.title || payment?.planId || "Не определен",
+        subscriptionUntil: user.subscriptionUntil || null,
+      };
+    })
+    .sort((a, b) => String(a.subscriptionUntil || "").localeCompare(String(b.subscriptionUntil || "")) * -1);
+
+  res.json({
+    counts: db.trafficStats.counts,
+    recent: db.trafficStats.recent.slice(0, 30),
+    paidSubscribers,
+  });
 });
 
 app.post("/api/promocodes/apply", requireAuth, (req, res) => {

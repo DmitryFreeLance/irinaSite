@@ -34,8 +34,16 @@ const mapFullscreenTitle = document.querySelector("#mapFullscreenTitle");
 const mapFullscreenMeta = document.querySelector("#mapFullscreenMeta");
 const mapAccessBanner = document.querySelector("#mapAccessBanner");
 const heroBadge = document.querySelector(".hero__badge");
+const heroTitle = document.querySelector("#heroTitle");
+const heroDescription = document.querySelector("#heroDescription");
+const heroScreenChip = document.querySelector("#heroScreenChip");
 const sidebarAuthText = document.querySelector("#sidebarAuthText");
 const sidebarAuthExtra = document.querySelector("#sidebarAuthExtra");
+const sidebar = document.querySelector(".sidebar");
+const mobileMenuButton = document.querySelector("#mobileMenuButton");
+const mobileMenuClose = document.querySelector("#mobileMenuClose");
+const mobileSidebarBackdrop = document.querySelector("#mobileSidebarBackdrop");
+const mobileCurrentScreen = document.querySelector("#mobileCurrentScreen");
 
 const adminMenuButton = document.querySelector("#adminMenuButton");
 const adminSubjectSelect = document.querySelector("#adminSubjectSelect");
@@ -68,8 +76,39 @@ const adminGeneratePromoButton = document.querySelector("#adminGeneratePromoButt
 const adminShowPromosButton = document.querySelector("#adminShowPromosButton");
 const adminPromoList = document.querySelector("#adminPromoList");
 const adminCatalogAccessList = document.querySelector("#adminCatalogAccessList");
+const adminTrafficStats = document.querySelector("#adminTrafficStats");
+const adminStatsRecentList = document.querySelector("#adminStatsRecentList");
+const adminPaidUsersList = document.querySelector("#adminPaidUsersList");
 const personalDataConsentLink = document.querySelector("#personalDataConsentLink");
 let appModalActionHandler = null;
+const screenContentMeta = {
+  teacher: {
+    title: "Учебники и интеллект-карты",
+    description:
+      "Выберите предмет, затем класс и параграф. В каждой теме ветви карты можно сворачивать и разворачивать для повторения материала.",
+    chip: "Главная",
+  },
+  student: {
+    title: "Подсказки для школьника",
+    description: "Короткий и понятный сценарий подготовки: карта, конспект, пересказ и самопроверка.",
+    chip: "Школьнику",
+  },
+  pricing: {
+    title: "Тарифы и подписка",
+    description: "Выберите подходящий тариф и оплатите в ЮKassa. Доступ включается автоматически.",
+    chip: "Тарифы",
+  },
+  cabinet: {
+    title: "Личный кабинет",
+    description: "Управляйте аккаунтом, подпиской и промокодами в одном месте.",
+    chip: "Личный кабинет",
+  },
+  admin: {
+    title: "Админка",
+    description: "Загрузка карт, настройка доступа к предметам и управление промокодами.",
+    chip: "Админка",
+  },
+};
 const PERSONAL_DATA_CONSENT_TEXT = [
   "Нажимая «Согласен(а), скачать оферту», вы даете согласие на обработку персональных данных в соответствии с Федеральным законом №152-ФЗ «О персональных данных».",
   "Оператор персональных данных: Акифьева Ирина Вячеславовна, email: UMKarta@mail.ru.",
@@ -91,6 +130,7 @@ init();
 
 async function init() {
   setupMenuTabs();
+  setupMobileMenu();
   setupTeacherSelectors();
   setupAdminPanel();
   setupMapFullscreenControls();
@@ -135,6 +175,10 @@ function setupMenuTabs() {
         panel.classList.toggle("is-visible", panel.dataset.screenPanel === screen);
       });
 
+      updateScreenContext(screen);
+      closeMobileMenu();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
       if (screen !== "teacher") {
         closeFullscreenMap();
       }
@@ -143,9 +187,54 @@ function setupMenuTabs() {
         renderAdminBindings();
         renderAdminCatalogAccess();
         renderAdminPromos();
+        renderAdminStats();
       }
     });
   });
+
+  const initialScreen = document.querySelector(".menu__item.is-active")?.dataset.screen || "teacher";
+  updateScreenContext(initialScreen);
+}
+
+function setupMobileMenu() {
+  if (!mobileMenuButton || !sidebar || !mobileSidebarBackdrop) return;
+
+  const openMenu = () => {
+    sidebar.classList.add("is-open");
+    mobileSidebarBackdrop.hidden = false;
+    document.body.classList.add("menu-open");
+  };
+
+  mobileMenuButton.addEventListener("click", openMenu);
+  mobileMenuClose?.addEventListener("click", closeMobileMenu);
+  mobileSidebarBackdrop.addEventListener("click", closeMobileMenu);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMobileMenu();
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 980) {
+      closeMobileMenu();
+    }
+  });
+}
+
+function closeMobileMenu() {
+  if (!sidebar || !mobileSidebarBackdrop) return;
+  sidebar.classList.remove("is-open");
+  mobileSidebarBackdrop.hidden = true;
+  document.body.classList.remove("menu-open");
+}
+
+function updateScreenContext(screen) {
+  const meta = screenContentMeta[screen] || screenContentMeta.teacher;
+  if (heroTitle) heroTitle.textContent = meta.title;
+  if (heroDescription) heroDescription.textContent = meta.description;
+  if (heroScreenChip) heroScreenChip.textContent = meta.chip;
+  if (mobileCurrentScreen) mobileCurrentScreen.textContent = meta.chip;
 }
 
 function setupTeacherSelectors() {
@@ -859,11 +948,13 @@ function setupAdminPanel() {
     renderAdminClassOptions();
     renderAdminParagraphOptions();
     renderAdminBindings();
+    renderAdminStats();
   });
 
   adminClassSelect.addEventListener("change", () => {
     renderAdminParagraphOptions();
     renderAdminBindings();
+    renderAdminStats();
   });
 
   adminSaveButton.addEventListener("click", async () => {
@@ -913,16 +1004,17 @@ function setupAdminPanel() {
       const aiMeta = response.data?.ai;
       if (aiMeta?.used) {
         const ocrNote = aiMeta?.ocrUsed ? " (PDF OCR + AI)" : "";
-        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам. AI-обработка (${aiMeta.provider}, ${aiMeta.model}) применена${ocrNote}.`;
+        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам. Название параграфа обновлено по имени файла: «${response.data?.paragraphTitle || file.name}». AI-обработка (${aiMeta.provider}, ${aiMeta.model}) применена${ocrNote}.`;
       } else if (aiMeta?.preserveText) {
         const ocrNote = aiMeta?.ocrUsed ? " (PDF OCR)" : "";
-        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам в режиме без изменения текста${ocrNote}.`;
+        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам. Название параграфа обновлено по имени файла: «${response.data?.paragraphTitle || file.name}». Режим без изменения текста${ocrNote}.`;
       } else if (aiMeta?.enabled && aiMeta?.error) {
         const ocrNote = aiMeta?.ocrUsed ? " OCR выполнен, но AI не собрал структуру." : "";
-        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам. AI недоступен: ${aiMeta.error}.${ocrNote} Использована исходная структура.`;
+        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам. Название параграфа обновлено по имени файла: «${response.data?.paragraphTitle || file.name}». AI недоступен: ${aiMeta.error}.${ocrNote} Использована исходная структура.`;
       } else {
-        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам (без AI-обработки).`;
+        adminStatus.textContent = `Карта привязана к ${selectedParagraphIds.length} параграфам. Название параграфа обновлено по имени файла: «${response.data?.paragraphTitle || file.name}».`;
       }
+      await reloadCatalogAndUiState();
       await renderAdminBindings();
 
       if (
@@ -1163,6 +1255,107 @@ async function renderAdminCatalogAccess() {
 
     li.append(label, button);
     adminCatalogAccessList.appendChild(li);
+  });
+}
+
+async function reloadCatalogAndUiState() {
+  const prevSubjectId = appState.subjectId;
+  const prevGradeId = appState.gradeId;
+  const prevParagraphId = appState.paragraphId;
+
+  await loadCatalog();
+  alignCatalogSelection();
+
+  if (prevSubjectId) appState.subjectId = prevSubjectId;
+  const currentSubject = getCurrentSubject();
+  if (currentSubject?.grades && prevGradeId && currentSubject.grades[prevGradeId]) {
+    appState.gradeId = prevGradeId;
+  } else if (!currentSubject?.grades?.[appState.gradeId]) {
+    appState.gradeId = null;
+  }
+
+  const currentGrade = getCurrentGrade();
+  if (currentGrade?.paragraphs?.some((item) => item.id === prevParagraphId)) {
+    appState.paragraphId = prevParagraphId;
+  } else if (!currentGrade?.paragraphs?.some((item) => item.id === appState.paragraphId)) {
+    appState.paragraphId = null;
+  }
+
+  renderSubjects();
+  renderClassOptions();
+  if (appState.gradeId) {
+    classSelect.value = appState.gradeId;
+    renderParagraphOptions();
+  }
+  if (appState.paragraphId) {
+    paragraphSelect.value = appState.paragraphId;
+  }
+
+  rebuildAdminSelectors();
+  await renderMap();
+}
+
+async function renderAdminStats() {
+  if (!adminTrafficStats || !adminPaidUsersList || !adminStatsRecentList) return;
+
+  if (!isAdmin()) {
+    adminTrafficStats.innerHTML = "";
+    adminStatsRecentList.innerHTML = "<li>Для просмотра статистики нужен аккаунт администратора.</li>";
+    adminPaidUsersList.innerHTML = "<li>Для просмотра нужен аккаунт администратора.</li>";
+    return;
+  }
+
+  const response = await apiJson("/api/admin/stats", { method: "GET" });
+  if (!response.ok) {
+    const errorText = escapeHtml(response.data?.error || "Не удалось загрузить статистику.");
+    adminTrafficStats.innerHTML = `<article class="stats-card"><p>Ошибка</p><strong>—</strong></article>`;
+    adminStatsRecentList.innerHTML = `<li>${errorText}</li>`;
+    adminPaidUsersList.innerHTML = `<li>${errorText}</li>`;
+    return;
+  }
+
+  const counts = response.data?.counts || {};
+  const cards = [
+    { label: "Всего переходов", value: counts.total ?? 0 },
+    { label: "Обычная ссылка", value: counts.direct ?? 0 },
+    { label: "enter=tg", value: counts.tg ?? 0 },
+    { label: "enter=vk", value: counts.vk ?? 0 },
+    { label: "enter=another", value: counts.another ?? 0 },
+  ];
+
+  adminTrafficStats.innerHTML = "";
+  cards.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "stats-card";
+    card.innerHTML = `<p>${escapeHtml(item.label)}</p><strong>${Number(item.value) || 0}</strong>`;
+    adminTrafficStats.appendChild(card);
+  });
+
+  const recent = Array.isArray(response.data?.recent) ? response.data.recent : [];
+  adminStatsRecentList.innerHTML = "";
+  if (!recent.length) {
+    adminStatsRecentList.innerHTML = "<li>Пока нет зафиксированных переходов.</li>";
+  } else {
+    recent.slice(0, 20).forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = `${formatDateTime(item.at)} — ${item.source}`;
+      adminStatsRecentList.appendChild(li);
+    });
+  }
+
+  const paidSubscribers = Array.isArray(response.data?.paidSubscribers) ? response.data.paidSubscribers : [];
+  adminPaidUsersList.innerHTML = "";
+  if (!paidSubscribers.length) {
+    adminPaidUsersList.innerHTML = "<li>Нет активных оплаченных подписок.</li>";
+    return;
+  }
+
+  paidSubscribers.forEach((item) => {
+    const li = document.createElement("li");
+    li.innerHTML =
+      `<b>${escapeHtml(item.email || "")}</b> — ${escapeHtml(item.planTitle || "Не определен")} ` +
+      `— до ${formatDate(item.subscriptionUntil)}`;
+    adminPaidUsersList.appendChild(li);
   });
 }
 

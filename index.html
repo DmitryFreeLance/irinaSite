@@ -87,9 +87,6 @@
 
         <section class="screen is-visible" data-screen-panel="teacher">
           <h2>Каталог учебников</h2>
-          <p class="section-note">
-            Доступные предметы выделены ярко. Закрытые предметы можно открыть в админке.
-          </p>
 
           <div id="subjectGrid" class="subject-grid" aria-live="polite"></div>
 
@@ -184,29 +181,43 @@
           <h2>Личный кабинет</h2>
           <div class="cabinet-grid">
             <div class="cabinet-card" id="authFormsCard">
-              <h3>Вход и регистрация</h3>
-              <form id="loginForm" class="auth-form">
-                <label>
-                  Email
-                  <input type="email" id="loginEmail" placeholder="you@example.com" required />
-                </label>
-                <label>
-                  Пароль
-                  <input type="password" id="loginPassword" placeholder="******" required />
-                </label>
-                <button type="submit">Войти</button>
-              </form>
-              <form id="registerForm" class="auth-form auth-form--secondary">
-                <label>
-                  Email
-                  <input type="email" id="registerEmail" placeholder="you@example.com" required />
-                </label>
-                <label>
-                  Пароль
-                  <input type="password" id="registerPassword" placeholder="минимум 6 символов" required />
-                </label>
-                <button type="submit">Зарегистрироваться</button>
-              </form>
+              <h3>Вход в аккаунт</h3>
+              <div class="auth-tabs" role="tablist" aria-label="Выбор формы авторизации">
+                <button id="authTabLogin" type="button" class="auth-tab is-active" data-auth-pane="login" role="tab" aria-selected="true">
+                  Вход
+                </button>
+                <button id="authTabRegister" type="button" class="auth-tab" data-auth-pane="register" role="tab" aria-selected="false">
+                  Регистрация
+                </button>
+              </div>
+
+              <div id="authLoginPane" class="auth-pane is-active" role="tabpanel">
+                <form id="loginForm" class="auth-form">
+                  <label>
+                    Email
+                    <input type="email" id="loginEmail" placeholder="you@example.com" required />
+                  </label>
+                  <label>
+                    Пароль
+                    <input type="password" id="loginPassword" placeholder="******" required />
+                  </label>
+                  <button type="submit">Войти</button>
+                </form>
+              </div>
+
+              <div id="authRegisterPane" class="auth-pane" role="tabpanel" hidden>
+                <form id="registerForm" class="auth-form">
+                  <label>
+                    Email
+                    <input type="email" id="registerEmail" placeholder="you@example.com" required />
+                  </label>
+                  <label>
+                    Пароль
+                    <input type="password" id="registerPassword" placeholder="минимум 6 символов" required />
+                  </label>
+                  <button type="submit">Зарегистрироваться</button>
+                </form>
+              </div>
               <p class="auth-legal">
                 Регистрируясь, вы принимаете условия
                 <a href="./assets/oferta-umkart.docx" download>Публичной оферты</a>

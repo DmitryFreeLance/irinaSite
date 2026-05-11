@@ -58,6 +58,10 @@ const adminBindingsList = document.querySelector("#adminBindingsList");
 const loginForm = document.querySelector("#loginForm");
 const registerForm = document.querySelector("#registerForm");
 const authFormsCard = document.querySelector("#authFormsCard");
+const authTabLogin = document.querySelector("#authTabLogin");
+const authTabRegister = document.querySelector("#authTabRegister");
+const authLoginPane = document.querySelector("#authLoginPane");
+const authRegisterPane = document.querySelector("#authRegisterPane");
 const authStatus = document.querySelector("#authStatus");
 const profileSummary = document.querySelector("#profileSummary");
 const cabinetStatus = document.querySelector("#cabinetStatus");
@@ -137,6 +141,7 @@ async function init() {
   setupMapFullscreenControls();
   setupAppModal();
   setupAuthPanel();
+  setupAuthTabs();
   setupPersonalDataConsentLink();
   setupPromoPanel();
   setupPlanButtons();
@@ -160,6 +165,26 @@ async function init() {
       pricingStatus.textContent ||
       "Платеж подтвержден. Проверяем статус подписки по вебхуку ЮKassa, обновление может занять до 10-20 секунд.";
   }
+}
+
+function setupAuthTabs() {
+  if (!authTabLogin || !authTabRegister || !authLoginPane || !authRegisterPane) return;
+
+  const activatePane = (pane) => {
+    const isLogin = pane === "login";
+    authTabLogin.classList.toggle("is-active", isLogin);
+    authTabRegister.classList.toggle("is-active", !isLogin);
+    authTabLogin.setAttribute("aria-selected", isLogin ? "true" : "false");
+    authTabRegister.setAttribute("aria-selected", isLogin ? "false" : "true");
+    authLoginPane.classList.toggle("is-active", isLogin);
+    authRegisterPane.classList.toggle("is-active", !isLogin);
+    authLoginPane.hidden = !isLogin;
+    authRegisterPane.hidden = isLogin;
+    authStatus.textContent = "";
+  };
+
+  authTabLogin.addEventListener("click", () => activatePane("login"));
+  authTabRegister.addEventListener("click", () => activatePane("register"));
 }
 
 function setupMenuTabs() {
@@ -349,6 +374,7 @@ function setupAuthPanel() {
       icon: "🎉",
       actionText: "Продолжить",
     });
+    if (authTabLogin?.click) authTabLogin.click();
     await refreshCurrentUser();
     if (loginForm) loginForm.reset();
     if (registerForm) registerForm.reset();
@@ -606,6 +632,16 @@ function applyUserStateToUi() {
 
   if (!user) {
     if (authFormsCard) authFormsCard.hidden = false;
+    if (authTabLogin && authTabRegister && authLoginPane && authRegisterPane) {
+      authTabLogin.classList.add("is-active");
+      authTabRegister.classList.remove("is-active");
+      authTabLogin.setAttribute("aria-selected", "true");
+      authTabRegister.setAttribute("aria-selected", "false");
+      authLoginPane.hidden = false;
+      authRegisterPane.hidden = true;
+      authLoginPane.classList.add("is-active");
+      authRegisterPane.classList.remove("is-active");
+    }
     sidebarAuthText.textContent = "Гость. Для просмотра карт нужна регистрация.";
     sidebarAuthExtra.textContent = "";
     heroBadge.textContent = "Первые 3 карты бесплатно после регистрации";

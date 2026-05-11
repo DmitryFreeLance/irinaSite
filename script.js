@@ -57,6 +57,7 @@ const adminBindingsList = document.querySelector("#adminBindingsList");
 
 const loginForm = document.querySelector("#loginForm");
 const registerForm = document.querySelector("#registerForm");
+const authFormsCard = document.querySelector("#authFormsCard");
 const authStatus = document.querySelector("#authStatus");
 const profileSummary = document.querySelector("#profileSummary");
 const cabinetStatus = document.querySelector("#cabinetStatus");
@@ -314,6 +315,8 @@ function setupAuthPanel() {
       actionText: "Продолжить",
     });
     await refreshCurrentUser();
+    if (loginForm) loginForm.reset();
+    if (registerForm) registerForm.reset();
     applyUserStateToUi();
     await refreshPromoState();
     await refreshSubscriptionStatus();
@@ -347,6 +350,8 @@ function setupAuthPanel() {
       actionText: "Продолжить",
     });
     await refreshCurrentUser();
+    if (loginForm) loginForm.reset();
+    if (registerForm) registerForm.reset();
     applyUserStateToUi();
     await refreshPromoState();
     await refreshSubscriptionStatus();
@@ -600,6 +605,7 @@ function applyUserStateToUi() {
   logoutButton.hidden = !user;
 
   if (!user) {
+    if (authFormsCard) authFormsCard.hidden = false;
     sidebarAuthText.textContent = "Гость. Для просмотра карт нужна регистрация.";
     sidebarAuthExtra.textContent = "";
     heroBadge.textContent = "Первые 3 карты бесплатно после регистрации";
@@ -617,6 +623,7 @@ function applyUserStateToUi() {
     return;
   }
 
+  if (authFormsCard) authFormsCard.hidden = true;
   sidebarAuthText.textContent = user.subscriptionActive
     ? `Активная подписка до ${formatDate(user.subscriptionUntil)}.`
     : `Бесплатно доступно: ${user.freeMapsLeft} из 3 карт.`;

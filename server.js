@@ -28,6 +28,8 @@ const PLANS = [
 
 const DISCOUNT_PROMO_CODES = new Set(["УЧУСЬ1.0", "МНЕМО1.0", "АРТ1.0"]);
 const DISCOUNT_PROMO_PERCENT = 10;
+const YEAR_SPECIAL_PROMO_CODE = "BSTSUB100FOR1Y";
+const YEAR_SPECIAL_PROMO_PRICE = 100;
 const ENTER_SOURCES = new Set(["tg", "vk", "another"]);
 const DEFAULT_SUBJECT_ACCESS = {
   history: true,
@@ -86,6 +88,12 @@ function ensureParagraphOverrides(db) {
   }
 }
 
+function ensureParagraphStructures(db) {
+  if (!db.paragraphStructures || typeof db.paragraphStructures !== "object") {
+    db.paragraphStructures = {};
+  }
+}
+
 function ensureTrafficStats(db) {
   if (!db.trafficStats || typeof db.trafficStats !== "object") {
     db.trafficStats = {};
@@ -106,14 +114,21 @@ function ensureTrafficStats(db) {
 
 function applyParagraphOverridesToCatalog(catalog, db) {
   ensureParagraphOverrides(db);
+  ensureParagraphStructures(db);
   return catalog.map((subject) => {
     if (!subject.grades) return subject;
 
     const subjectOverrides = db.paragraphOverrides[subject.id] || {};
+    const subjectStructures = db.paragraphStructures[subject.id] || {};
     const grades = Object.fromEntries(
       Object.entries(subject.grades).map(([gradeId, grade]) => {
+        const rawStructure = subjectStructures[gradeId];
+        const structuredParagraphs = Array.isArray(rawStructure)
+          ? rawStructure.map((item, index) => sanitizeParagraphEntity(item, index + 1)).filter(Boolean)
+          : [];
         const gradeOverrides = subjectOverrides[gradeId] || {};
-        const paragraphs = (grade.paragraphs || []).map((paragraph) => {
+        const sourceParagraphs = structuredParagraphs.length ? structuredParagraphs : grade.paragraphs || [];
+        const paragraphs = sourceParagraphs.map((paragraph) => {
           const override = gradeOverrides[paragraph.id];
           if (typeof override !== "string" || !override.trim()) {
             return paragraph;
@@ -150,6 +165,7 @@ function loadDb() {
   if (!db.promoCodes) db.promoCodes = [];
   ensureCatalogAccess(db);
   ensureParagraphOverrides(db);
+  ensureParagraphStructures(db);
   ensureTrafficStats(db);
   return db;
 }
@@ -243,6 +259,21 @@ function isDiscountPromoCode(code) {
   return DISCOUNT_PROMO_CODES.has(normalizePromoCode(code));
 }
 
+function isYearSpecialPromoCode(code) {
+  return normalizePromoCode(code) === YEAR_SPECIAL_PROMO_CODE;
+}
+
+function promoStateFromCode(code) {
+  const normalized = normalizePromoCode(code);
+  if (isDiscountPromoCode(normalized)) {
+    return { type: "discount", code: normalized, percent: DISCOUNT_PROMO_PERCENT };
+  }
+  if (isYearSpecialPromoCode(normalized)) {
+    return { type: "year_special", code: normalized, yearPrice: YEAR_SPECIAL_PROMO_PRICE, planId: "year" };
+  }
+  return null;
+}
+
 function generateTrialPromoCode(db) {
   let attempts = 0;
   while (attempts < 50) {
@@ -271,6 +302,39 @@ function paragraphTitleFromSourceName(sourceName) {
   const candidate = String(parsed.name || raw || "").trim();
   if (!candidate) return "Без названия";
   return candidate.slice(0, 220);
+}
+
+function sanitizeParagraphEntity(raw, fallbackIndex) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id || "").trim().slice(0, 80);
+  const title = String(raw.title || "").trim().slice(0, 220);
+  if (!id || !title) return null;
+  const chapter = String(raw.chapter || `Глава ${Math.ceil((fallbackIndex || 1) / 5)}`).trim().slice(0, 120);
+  return { id, title, chapter };
+}
+
+function createParagraphId(gradeId, list) {
+  const used = new Set((list || []).map((item) => String(item.id || "")));
+  let attempt = 1;
+  while (attempt < 2000) {
+    const id = `p-${gradeId}-custom-${attempt}`;
+    if (!used.has(id)) return id;
+    attempt += 1;
+  }
+  return `p-${gradeId}-custom-${Date.now().toString(36)}`;
+}
+
+function ensureGradeParagraphStructure(db, subjectId, gradeId) {
+  ensureParagraphStructures(db);
+  if (!db.paragraphStructures[subjectId]) db.paragraphStructures[subjectId] = {};
+  if (!Array.isArray(db.paragraphStructures[subjectId][gradeId])) {
+    const baseSubject = baseCatalog().find((item) => item.id === subjectId);
+    const baseGrade = baseSubject?.grades?.[gradeId];
+    db.paragraphStructures[subjectId][gradeId] = (baseGrade?.paragraphs || []).map((item, index) =>
+      sanitizeParagraphEntity(item, index + 1),
+    );
+  }
+  return db.paragraphStructures[subjectId][gradeId];
 }
 
 function sanitizeMapNode(node, depth = 0) {
@@ -850,10 +914,8 @@ app.get("/api/auth/me", (req, res) => {
     return;
   }
 
-  const activeDiscountPromoCode = normalizePromoCode(req.session.activeDiscountPromoCode);
-  const discountPromo = isDiscountPromoCode(activeDiscountPromoCode)
-    ? { code: activeDiscountPromoCode, percent: DISCOUNT_PROMO_PERCENT }
-    : null;
+  const activePromoCode = normalizePromoCode(req.session.activeDiscountPromoCode);
+  const discountPromo = promoStateFromCode(activePromoCode);
   res.json({ user: publicUser(user), discountPromo });
 });
 
@@ -1072,6 +1134,121 @@ app.post("/api/admin/catalog-access", requireAuth, requireAdmin, (req, res) => {
   res.status(result.status).json(result.body);
 });
 
+app.get("/api/admin/paragraphs", requireAuth, requireAdmin, (req, res) => {
+  const subjectId = String(req.query.subjectId || "");
+  const gradeId = String(req.query.gradeId || "");
+  if (!subjectId || !gradeId) {
+    res.status(400).json({ error: "Нужны subjectId и gradeId." });
+    return;
+  }
+
+  const db = loadDb();
+  const subject = catalogFromDb(db).find((item) => item.id === subjectId);
+  const grade = subject?.grades?.[gradeId];
+  if (!grade) {
+    res.status(404).json({ error: "Класс не найден." });
+    return;
+  }
+
+  res.json({ paragraphs: grade.paragraphs || [] });
+});
+
+app.post("/api/admin/paragraphs", requireAuth, requireAdmin, (req, res) => {
+  const subjectId = String(req.body.subjectId || "");
+  const gradeId = String(req.body.gradeId || "");
+  const action = String(req.body.action || "");
+  const paragraphId = String(req.body.paragraphId || "");
+  const titleInput = String(req.body.title || "").trim();
+
+  if (!subjectId || !gradeId || !action) {
+    res.status(400).json({ error: "Нужны subjectId, gradeId и action." });
+    return;
+  }
+
+  const result = mutateDb((db) => {
+    const baseSubject = baseCatalog().find((item) => item.id === subjectId);
+    if (!baseSubject || !baseSubject.grades?.[gradeId]) {
+      return { status: 404, body: { error: "Предмет или класс не найден." } };
+    }
+
+    const list = ensureGradeParagraphStructure(db, subjectId, gradeId);
+    const index = list.findIndex((item) => item.id === paragraphId);
+
+    if (action === "add") {
+      const id = createParagraphId(gradeId, list);
+      const title = (titleInput || "Новая глава").slice(0, 220);
+      list.push({ id, title, chapter: "Дополнительно" });
+      return { status: 200, body: { ok: true, action, paragraphId: id } };
+    }
+
+    if (action === "add_content") {
+      const id = createParagraphId(gradeId, list);
+      list.unshift({ id, title: "Содержание", chapter: "Содержание" });
+      return { status: 200, body: { ok: true, action, paragraphId: id } };
+    }
+
+    if (action === "add_summary") {
+      const id = createParagraphId(gradeId, list);
+      list.push({ id, title: "Итоги главы", chapter: "Итоги" });
+      return { status: 200, body: { ok: true, action, paragraphId: id } };
+    }
+
+    if (index === -1) {
+      return { status: 404, body: { error: "Параграф не найден." } };
+    }
+
+    if (action === "rename") {
+      if (!titleInput || titleInput.length < 2) {
+        return { status: 400, body: { error: "Название должно быть не короче 2 символов." } };
+      }
+      list[index].title = titleInput.slice(0, 220);
+      ensureParagraphOverrides(db);
+      if (!db.paragraphOverrides[subjectId]) db.paragraphOverrides[subjectId] = {};
+      if (!db.paragraphOverrides[subjectId][gradeId]) db.paragraphOverrides[subjectId][gradeId] = {};
+      db.paragraphOverrides[subjectId][gradeId][paragraphId] = list[index].title;
+      return { status: 200, body: { ok: true, action, paragraphId } };
+    }
+
+    if (action === "move_up") {
+      if (index > 0) {
+        const [row] = list.splice(index, 1);
+        list.splice(index - 1, 0, row);
+      }
+      return { status: 200, body: { ok: true, action, paragraphId } };
+    }
+
+    if (action === "move_down") {
+      if (index < list.length - 1) {
+        const [row] = list.splice(index, 1);
+        list.splice(index + 1, 0, row);
+      }
+      return { status: 200, body: { ok: true, action, paragraphId } };
+    }
+
+    if (action === "delete") {
+      list.splice(index, 1);
+      ensureParagraphOverrides(db);
+      if (db.paragraphOverrides?.[subjectId]?.[gradeId]) {
+        delete db.paragraphOverrides[subjectId][gradeId][paragraphId];
+      }
+      const mapKey = `${subjectId}::${gradeId}::${paragraphId}`;
+      db.maps = db.maps.filter((item) => item.key !== mapKey);
+      return { status: 200, body: { ok: true, action, paragraphId } };
+    }
+
+    if (action === "delete_map") {
+      const mapKey = `${subjectId}::${gradeId}::${paragraphId}`;
+      const before = db.maps.length;
+      db.maps = db.maps.filter((item) => item.key !== mapKey);
+      return { status: 200, body: { ok: true, action, paragraphId, removed: before - db.maps.length } };
+    }
+
+    return { status: 400, body: { error: "Неизвестное действие." } };
+  });
+
+  res.status(result.status).json(result.body);
+});
+
 app.post("/api/admin/paragraph-title", requireAuth, requireAdmin, (req, res) => {
   const subjectId = String(req.body.subjectId || "");
   const gradeId = String(req.body.gradeId || "");
@@ -1164,13 +1341,24 @@ app.post("/api/promocodes/apply", requireAuth, (req, res) => {
     return;
   }
 
+  if (isYearSpecialPromoCode(code)) {
+    req.session.activeDiscountPromoCode = code;
+    res.json({
+      ok: true,
+      type: "year_special",
+      message: `Промокод ${code} активирован: годовой тариф снижен до ${YEAR_SPECIAL_PROMO_PRICE} ₽.`,
+      discount: { type: "year_special", code, yearPrice: YEAR_SPECIAL_PROMO_PRICE, planId: "year" },
+    });
+    return;
+  }
+
   if (isDiscountPromoCode(code)) {
     req.session.activeDiscountPromoCode = code;
     res.json({
       ok: true,
       type: "discount",
       message: `Промокод ${code} активирован: скидка ${DISCOUNT_PROMO_PERCENT}% на оплату подписки.`,
-      discount: { code, percent: DISCOUNT_PROMO_PERCENT },
+      discount: { type: "discount", code, percent: DISCOUNT_PROMO_PERCENT },
     });
     return;
   }
@@ -1215,11 +1403,12 @@ app.post("/api/promocodes/apply", requireAuth, (req, res) => {
 
 app.get("/api/promocodes/me", requireAuth, (req, res) => {
   const code = normalizePromoCode(req.session.activeDiscountPromoCode);
-  if (!isDiscountPromoCode(code)) {
+  const promo = promoStateFromCode(code);
+  if (!promo) {
     res.json({ discount: null });
     return;
   }
-  res.json({ discount: { code, percent: DISCOUNT_PROMO_PERCENT } });
+  res.json({ discount: promo });
 });
 
 app.post("/api/admin/promocodes/generate", requireAuth, requireAdmin, (req, res) => {
@@ -1263,6 +1452,12 @@ app.get("/api/admin/promocodes/inactive", requireAuth, requireAdmin, (req, res) 
     gives: `Скидка ${DISCOUNT_PROMO_PERCENT}% (без ограничений по количеству активаций)`,
     permanent: true,
   }));
+
+  permanentDiscounts.push({
+    code: YEAR_SPECIAL_PROMO_CODE,
+    gives: `Годовой тариф за ${YEAR_SPECIAL_PROMO_PRICE} ₽ (без ограничений по количеству активаций)`,
+    permanent: true,
+  });
 
   res.json({
     oneTimeRecords,
@@ -1331,9 +1526,7 @@ app.get("/api/subscription/status", requireAuth, async (req, res) => {
 
   if (result.status === 200) {
     const activeDiscountPromoCode = normalizePromoCode(req.session.activeDiscountPromoCode);
-    result.body.discount = isDiscountPromoCode(activeDiscountPromoCode)
-      ? { code: activeDiscountPromoCode, percent: DISCOUNT_PROMO_PERCENT }
-      : null;
+    result.body.discount = promoStateFromCode(activeDiscountPromoCode);
   }
 
   res.status(result.status).json(result.body);
@@ -1353,15 +1546,26 @@ app.post("/api/subscription/create-payment", requireAuth, async (req, res) => {
 
   const effectivePromoCode = requestPromoCode || sessionPromoCode;
   let discountPercent = 0;
+  let specialYearPrice = null;
   if (effectivePromoCode) {
-    if (!isDiscountPromoCode(effectivePromoCode)) {
+    if (isYearSpecialPromoCode(effectivePromoCode)) {
+      if (plan.id !== "year") {
+        res.status(400).json({ error: "Промокод BSTSUB100FOR1Y действует только на годовой тариф." });
+        return;
+      }
+      specialYearPrice = YEAR_SPECIAL_PROMO_PRICE;
+    } else if (isDiscountPromoCode(effectivePromoCode)) {
+      discountPercent = DISCOUNT_PROMO_PERCENT;
+    } else {
       res.status(400).json({ error: "Промокод не дает скидку на оплату подписки." });
       return;
     }
-    discountPercent = DISCOUNT_PROMO_PERCENT;
   }
 
-  const discountedAmount = Number((plan.price * (1 - discountPercent / 100)).toFixed(2));
+  const discountedAmount =
+    specialYearPrice !== null
+      ? Number(specialYearPrice)
+      : Number((plan.price * (1 - discountPercent / 100)).toFixed(2));
   const finalAmount = Math.max(1, discountedAmount);
 
   const shopId = process.env.YOOKASSA_SHOP_ID;
@@ -1389,12 +1593,16 @@ app.post("/api/subscription/create-payment", requireAuth, async (req, res) => {
           type: "redirect",
           return_url: returnUrl,
         },
-        description: `Подписка УМКарта: ${plan.title}${discountPercent ? ` (${discountPercent}% по промокоду)` : ""}`,
+        description:
+          specialYearPrice !== null
+            ? `Подписка УМКарта: ${plan.title} (спеццена ${YEAR_SPECIAL_PROMO_PRICE} ₽ по промокоду)`
+            : `Подписка УМКарта: ${plan.title}${discountPercent ? ` (${discountPercent}% по промокоду)` : ""}`,
         metadata: {
           userId: req.session.userId,
           planId: plan.id,
           promoCode: effectivePromoCode || "",
           discountPercent: String(discountPercent || 0),
+          specialYearPrice: specialYearPrice !== null ? String(specialYearPrice) : "",
         },
       },
       {
@@ -1417,6 +1625,7 @@ app.post("/api/subscription/create-payment", requireAuth, async (req, res) => {
         amount: Number(finalAmount),
         baseAmount: Number(plan.price),
         discountPercent,
+        specialYearPrice,
         promoCode: effectivePromoCode || null,
         currency: "RUB",
         provider: "yookassa",
@@ -1432,6 +1641,7 @@ app.post("/api/subscription/create-payment", requireAuth, async (req, res) => {
       amount: finalAmount,
       baseAmount: plan.price,
       discountPercent,
+      specialYearPrice,
       promoCode: effectivePromoCode || null,
     });
   } catch (error) {

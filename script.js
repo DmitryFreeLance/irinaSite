@@ -52,8 +52,12 @@ const adminParagraphSelect = document.querySelector("#adminParagraphSelect");
 const adminFileInput = document.querySelector("#adminFileInput");
 const adminSaveButton = document.querySelector("#adminSaveButton");
 const adminClearButton = document.querySelector("#adminClearButton");
+const adminAddParagraphButton = document.querySelector("#adminAddParagraphButton");
+const adminAddContentButton = document.querySelector("#adminAddContentButton");
+const adminAddSummaryButton = document.querySelector("#adminAddSummaryButton");
 const adminStatus = document.querySelector("#adminStatus");
 const adminBindingsList = document.querySelector("#adminBindingsList");
+const adminParagraphManagerList = document.querySelector("#adminParagraphManagerList");
 
 const loginForm = document.querySelector("#loginForm");
 const registerForm = document.querySelector("#registerForm");
@@ -68,6 +72,9 @@ const cabinetStatus = document.querySelector("#cabinetStatus");
 const logoutButton = document.querySelector("#logoutButton");
 const goToAdminFromCabinet = document.querySelector("#goToAdminFromCabinet");
 const pricingStatus = document.querySelector("#pricingStatus");
+const yearPlanDiscountLabel = document.querySelector("#yearPlanDiscountLabel");
+const yearPlanOldPrice = document.querySelector("#yearPlanOldPrice");
+const yearPlanPrice = document.querySelector("#yearPlanPrice");
 const promoCodeInput = document.querySelector("#promoCodeInput");
 const promoApplyButton = document.querySelector("#promoApplyButton");
 const promoStatus = document.querySelector("#promoStatus");
@@ -114,6 +121,8 @@ const screenContentMeta = {
     chip: "Админка",
   },
 };
+const YEAR_SPECIAL_PROMO_CODE = "BSTSUB100FOR1Y";
+const YEAR_SPECIAL_PRICE = 100;
 const PERSONAL_DATA_CONSENT_TEXT = [
   "Нажимая «Согласен(а), скачать оферту», вы даете согласие на обработку персональных данных в соответствии с Федеральным законом №152-ФЗ «О персональных данных».",
   "Оператор персональных данных: Акифьева Ирина Вячеславовна, email: UMKarta@mail.ru.",
@@ -211,6 +220,7 @@ function setupMenuTabs() {
 
       if (screen === "admin") {
         renderAdminBindings();
+        renderAdminParagraphManager();
         renderAdminCatalogAccess();
         renderAdminPromos();
         renderAdminStats();
@@ -456,6 +466,14 @@ function setupPromoPanel() {
       if (response.data?.type === "discount") {
         appState.discountPromo = response.data.discount || null;
       }
+      if (response.data?.type === "year_special") {
+        appState.discountPromo = response.data.discount || null;
+        showAppModal("Годовой план снижен до 100 ₽ по промокоду BSTSUB100FOR1Y.", {
+          title: "Спецпредложение активировано",
+          icon: "🔥",
+          actionText: "Отлично",
+        });
+      }
 
       await refreshCurrentUser();
       await refreshPromoState();
@@ -538,9 +556,11 @@ async function startSubscription(planId, sourceButton, options = {}) {
   }
 
   const discountMeta =
-    response.data?.discountPercent > 0
-      ? ` Скидка ${response.data.discountPercent}% по коду ${response.data.promoCode}.`
-      : "";
+    response.data?.specialYearPrice
+      ? ` Годовой тариф по коду ${response.data.promoCode}: ${response.data.specialYearPrice} ₽.`
+      : response.data?.discountPercent > 0
+        ? ` Скидка ${response.data.discountPercent}% по коду ${response.data.promoCode}.`
+        : "";
   pricingStatus.textContent = `Переходим в ЮKassa для оплаты.${discountMeta} После оплаты статус обновится автоматически по вебхуку.`;
   cabinetStatus.textContent = pricingStatus.textContent;
 
@@ -622,6 +642,32 @@ async function refreshPromoState() {
   }
 }
 
+function promoStatusText(promo) {
+  if (!promo) return "";
+  if (promo.type === "year_special") {
+    return `Активен спецпромокод ${promo.code}: годовой тариф ${promo.yearPrice || YEAR_SPECIAL_PRICE} ₽.`;
+  }
+  if (promo.code && promo.percent) {
+    return `Активна скидка ${promo.percent}% по коду ${promo.code}.`;
+  }
+  return "";
+}
+
+function applyPricingPromoState(promo) {
+  if (!yearPlanDiscountLabel || !yearPlanOldPrice || !yearPlanPrice) return;
+
+  if (promo?.type === "year_special") {
+    yearPlanDiscountLabel.textContent = "СПЕЦПРЕДЛОЖЕНИЕ";
+    yearPlanOldPrice.textContent = "3 840 ₽";
+    yearPlanPrice.textContent = `${promo.yearPrice || YEAR_SPECIAL_PRICE} ₽`;
+    return;
+  }
+
+  yearPlanDiscountLabel.textContent = "-20% ЭКОНОМИЯ";
+  yearPlanOldPrice.textContent = "4 800 ₽ (400x12)";
+  yearPlanPrice.textContent = "3 840 ₽";
+}
+
 function applyUserStateToUi() {
   const user = appState.user;
   const isAdmin = Boolean(user && user.role === "admin");
@@ -651,6 +697,7 @@ function applyUserStateToUi() {
     if (promoApplyButton) promoApplyButton.disabled = false;
     if (promoCodeInput) promoCodeInput.disabled = false;
     if (promoStatus) promoStatus.textContent = "";
+    applyPricingPromoState(null);
 
     if (document.querySelector('.menu__item.is-active')?.dataset.screen === "admin") {
       openScreen("cabinet");
@@ -682,11 +729,8 @@ function applyUserStateToUi() {
 
   if (promoApplyButton) promoApplyButton.disabled = false;
   if (promoCodeInput) promoCodeInput.disabled = false;
-  if (appState.discountPromo?.code && promoStatus) {
-    promoStatus.textContent = `Активна скидка ${appState.discountPromo.percent}% по коду ${appState.discountPromo.code}.`;
-  } else if (promoStatus) {
-    promoStatus.textContent = "";
-  }
+  if (promoStatus) promoStatus.textContent = promoStatusText(appState.discountPromo);
+  applyPricingPromoState(appState.discountPromo);
 
   renderMap();
 }
@@ -705,9 +749,8 @@ async function refreshSubscriptionStatus(options = {}) {
   const status = response.data || {};
   appState.discountPromo = status.discount || appState.discountPromo || null;
 
-  if (appState.discountPromo?.code && promoStatus) {
-    promoStatus.textContent = `Активна скидка ${appState.discountPromo.percent}% по коду ${appState.discountPromo.code}.`;
-  }
+  if (promoStatus) promoStatus.textContent = promoStatusText(appState.discountPromo);
+  applyPricingPromoState(appState.discountPromo);
 
   if (status.subscriptionActive && status.subscriptionUntil) {
     const msg = `Подписка активна до ${formatDate(status.subscriptionUntil)}.`;
@@ -991,12 +1034,14 @@ function setupAdminPanel() {
     renderAdminClassOptions();
     renderAdminParagraphOptions();
     renderAdminBindings();
+    renderAdminParagraphManager();
     renderAdminStats();
   });
 
   adminClassSelect.addEventListener("change", () => {
     renderAdminParagraphOptions();
     renderAdminBindings();
+    renderAdminParagraphManager();
     renderAdminStats();
   });
 
@@ -1059,6 +1104,7 @@ function setupAdminPanel() {
       }
       await reloadCatalogAndUiState();
       await renderAdminBindings();
+      await renderAdminParagraphManager();
 
       if (
         appState.subjectId === adminSubjectSelect.value &&
@@ -1100,6 +1146,7 @@ function setupAdminPanel() {
 
     adminStatus.textContent = `Удалено привязок: ${response.data?.removed ?? 0}`;
     await renderAdminBindings();
+    await renderAdminParagraphManager();
 
     if (
       appState.subjectId === adminSubjectSelect.value &&
@@ -1108,6 +1155,18 @@ function setupAdminPanel() {
     ) {
       await renderMap();
     }
+  });
+
+  adminAddParagraphButton?.addEventListener("click", async () => {
+    await handleParagraphAdminAction("add");
+  });
+
+  adminAddContentButton?.addEventListener("click", async () => {
+    await handleParagraphAdminAction("add_content");
+  });
+
+  adminAddSummaryButton?.addEventListener("click", async () => {
+    await handleParagraphAdminAction("add_summary");
   });
 }
 
@@ -1194,6 +1253,140 @@ async function renderAdminBindings() {
       li.textContent = `${record.paragraphId} — ${record.sourceName} — обновлено ${formatDateTime(record.updatedAt)}`;
       adminBindingsList.appendChild(li);
     });
+}
+
+async function handleParagraphAdminAction(action, payload = {}) {
+  if (!isAdmin()) {
+    adminStatus.textContent = "Доступ в админку только у администратора.";
+    return false;
+  }
+
+  const subjectId = adminSubjectSelect.value;
+  const gradeId = adminClassSelect.value;
+  if (!subjectId || !gradeId) {
+    adminStatus.textContent = "Выберите предмет и класс.";
+    return false;
+  }
+
+  const response = await apiJson("/api/admin/paragraphs", {
+    method: "POST",
+    body: {
+      subjectId,
+      gradeId,
+      action,
+      ...payload,
+    },
+  });
+
+  if (!response.ok) {
+    adminStatus.textContent = response.data?.error || "Не удалось изменить структуру параграфов.";
+    return false;
+  }
+
+  await reloadCatalogAndUiState();
+  await renderAdminBindings();
+  await renderAdminParagraphManager();
+  adminStatus.textContent = "Структура параграфов обновлена.";
+  return true;
+}
+
+async function renderAdminParagraphManager() {
+  if (!adminParagraphManagerList) return;
+
+  if (!isAdmin()) {
+    adminParagraphManagerList.innerHTML = "<li>Для управления нужен аккаунт администратора.</li>";
+    return;
+  }
+
+  const subjectId = adminSubjectSelect.value;
+  const gradeId = adminClassSelect.value;
+  if (!subjectId || !gradeId) {
+    adminParagraphManagerList.innerHTML = "<li>Выберите предмет и класс.</li>";
+    return;
+  }
+
+  const [paragraphsRes, mapsRes] = await Promise.all([
+    apiJson(`/api/admin/paragraphs?subjectId=${encodeURIComponent(subjectId)}&gradeId=${encodeURIComponent(gradeId)}`, {
+      method: "GET",
+    }),
+    apiJson(`/api/admin/maps?subjectId=${encodeURIComponent(subjectId)}&gradeId=${encodeURIComponent(gradeId)}`, {
+      method: "GET",
+    }),
+  ]);
+
+  if (!paragraphsRes.ok) {
+    adminParagraphManagerList.innerHTML = `<li>${escapeHtml(paragraphsRes.data?.error || "Не удалось загрузить параграфы.")}</li>`;
+    return;
+  }
+
+  const paragraphs = Array.isArray(paragraphsRes.data?.paragraphs) ? paragraphsRes.data.paragraphs : [];
+  const mapParagraphs = new Set(
+    Array.isArray(mapsRes.data?.records) ? mapsRes.data.records.map((item) => String(item.paragraphId || "")) : [],
+  );
+
+  if (!paragraphs.length) {
+    adminParagraphManagerList.innerHTML = "<li>Параграфы отсутствуют. Добавьте новую главу.</li>";
+    return;
+  }
+
+  adminParagraphManagerList.innerHTML = "";
+  paragraphs.forEach((paragraph, index) => {
+    const li = document.createElement("li");
+    li.className = "admin-paragraph-item";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 220;
+    input.value = paragraph.title || "";
+    input.className = "admin-paragraph-item__input";
+
+    const controls = document.createElement("div");
+    controls.className = "admin-paragraph-item__controls";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.textContent = "Сохранить";
+    saveButton.addEventListener("click", async () => {
+      const title = String(input.value || "").trim();
+      await handleParagraphAdminAction("rename", { paragraphId: paragraph.id, title });
+    });
+
+    const upButton = document.createElement("button");
+    upButton.type = "button";
+    upButton.textContent = "↑";
+    upButton.disabled = index === 0;
+    upButton.addEventListener("click", async () => {
+      await handleParagraphAdminAction("move_up", { paragraphId: paragraph.id });
+    });
+
+    const downButton = document.createElement("button");
+    downButton.type = "button";
+    downButton.textContent = "↓";
+    downButton.disabled = index === paragraphs.length - 1;
+    downButton.addEventListener("click", async () => {
+      await handleParagraphAdminAction("move_down", { paragraphId: paragraph.id });
+    });
+
+    const removeMapButton = document.createElement("button");
+    removeMapButton.type = "button";
+    removeMapButton.textContent = "Удалить карту";
+    removeMapButton.disabled = !mapParagraphs.has(String(paragraph.id || ""));
+    removeMapButton.addEventListener("click", async () => {
+      await handleParagraphAdminAction("delete_map", { paragraphId: paragraph.id });
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Удалить главу";
+    deleteButton.className = "danger";
+    deleteButton.addEventListener("click", async () => {
+      await handleParagraphAdminAction("delete", { paragraphId: paragraph.id });
+    });
+
+    controls.append(saveButton, upButton, downButton, removeMapButton, deleteButton);
+    li.append(input, controls);
+    adminParagraphManagerList.appendChild(li);
+  });
 }
 
 async function renderAdminPromos() {

@@ -19,5 +19,17 @@
     "geography": false,
     "physics": false,
     "chemistry": false
+  },
+  "paragraphOverrides": {},
+  "paragraphStructures": {},
+  "trafficStats": {
+    "counts": {
+      "total": 0,
+      "direct": 0,
+      "tg": 0,
+      "vk": 0,
+      "another": 0
+    },
+    "recent": []
   }
 }

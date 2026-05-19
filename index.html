@@ -162,9 +162,9 @@
               <div class="pricing-card__content">
                 <p class="pricing-card__icon" aria-hidden="true">👑</p>
                 <p class="pricing-card__desc">Доступ ко всем предметам и классам</p>
-                <p class="pricing-card__discount">-20% ЭКОНОМИЯ</p>
-                <p class="pricing-card__old">4 800 ₽ (400x12)</p>
-                <p class="pricing-card__price">3 840 ₽</p>
+                <p id="yearPlanDiscountLabel" class="pricing-card__discount">-20% ЭКОНОМИЯ</p>
+                <p id="yearPlanOldPrice" class="pricing-card__old">4 800 ₽ (400x12)</p>
+                <p id="yearPlanPrice" class="pricing-card__price">3 840 ₽</p>
               </div>
               <button data-plan-id="year" class="plan-buy-button pricing-card__button">ПОДПИСАТЬСЯ<br />НА ГОД</button>
             </article>
@@ -275,7 +275,7 @@
         <section class="screen" data-screen-panel="admin">
           <h2>Админка загрузки карт</h2>
           <p class="section-note">
-            Выберите предмет, класс, один или несколько параграфов и загрузите карту в формате
+            Выберите предмет, класс, параграфы и загрузите карту в формате
             (`txt`, `xmind`, `xmmap`, `pdf`).
           </p>
 
@@ -289,7 +289,7 @@
               <select id="adminClassSelect"></select>
             </label>
             <label class="admin-grid__wide">
-              Параграфы (можно выбрать несколько)
+              Параграфы
               <select id="adminParagraphSelect" multiple size="10"></select>
             </label>
             <label class="admin-grid__wide">
@@ -316,6 +316,18 @@
           </div>
 
           <p id="adminStatus" class="section-note">Пока привязок не меняли.</p>
+
+          <div class="admin-bindings">
+            <h3>Структура глав и параграфов</h3>
+            <div class="admin-structure-actions">
+              <button id="adminAddContentButton" type="button" class="admin-actions__ghost">Добавить «Содержание»</button>
+              <button id="adminAddParagraphButton" type="button" class="admin-actions__ghost">Добавить главу</button>
+              <button id="adminAddSummaryButton" type="button" class="admin-actions__ghost">Добавить «Итоги главы»</button>
+            </div>
+            <ul id="adminParagraphManagerList">
+              <li>Выберите предмет и класс.</li>
+            </ul>
+          </div>
 
           <div class="admin-bindings admin-bindings--stats">
             <h3>Статистика переходов</h3>

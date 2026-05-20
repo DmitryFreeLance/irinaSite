@@ -55,8 +55,11 @@ const adminClearButton = document.querySelector("#adminClearButton");
 const adminAddParagraphButton = document.querySelector("#adminAddParagraphButton");
 const adminAddContentButton = document.querySelector("#adminAddContentButton");
 const adminAddSummaryButton = document.querySelector("#adminAddSummaryButton");
+const adminAddClassButton = document.querySelector("#adminAddClassButton");
+const adminNewClassTitle = document.querySelector("#adminNewClassTitle");
 const adminStatus = document.querySelector("#adminStatus");
 const adminBindingsList = document.querySelector("#adminBindingsList");
+const adminClassManagerList = document.querySelector("#adminClassManagerList");
 const adminParagraphManagerList = document.querySelector("#adminParagraphManagerList");
 
 const loginForm = document.querySelector("#loginForm");
@@ -219,6 +222,7 @@ function setupMenuTabs() {
       }
 
       if (screen === "admin") {
+        renderAdminGradeManager();
         renderAdminBindings();
         renderAdminParagraphManager();
         renderAdminCatalogAccess();
@@ -866,7 +870,7 @@ function renderClassOptions() {
   classSelect.append(new Option("Выберите класс", ""));
 
   Object.entries(subject.grades || {}).forEach(([gradeId, grade]) => {
-    classSelect.append(new Option(`${gradeId} класс · ${grade.title}`, gradeId));
+    classSelect.append(new Option(formatGradeOptionLabel(gradeId, grade), gradeId));
   });
 
   paragraphSelect.disabled = true;
@@ -1034,6 +1038,7 @@ function setupAdminPanel() {
     renderAdminClassOptions();
     renderAdminParagraphOptions();
     renderAdminBindings();
+    renderAdminGradeManager();
     renderAdminParagraphManager();
     renderAdminStats();
   });
@@ -1041,6 +1046,7 @@ function setupAdminPanel() {
   adminClassSelect.addEventListener("change", () => {
     renderAdminParagraphOptions();
     renderAdminBindings();
+    renderAdminGradeManager();
     renderAdminParagraphManager();
     renderAdminStats();
   });
@@ -1168,6 +1174,12 @@ function setupAdminPanel() {
   adminAddSummaryButton?.addEventListener("click", async () => {
     await handleParagraphAdminAction("add_summary");
   });
+
+  adminAddClassButton?.addEventListener("click", async () => {
+    const title = String(adminNewClassTitle?.value || "").trim();
+    const ok = await handleGradeAdminAction("add", { title });
+    if (ok && adminNewClassTitle) adminNewClassTitle.value = "";
+  });
 }
 
 function rebuildAdminSelectors() {
@@ -1192,6 +1204,7 @@ function rebuildAdminSelectors() {
 
 function renderAdminClassOptions() {
   const subject = getAdminSubject();
+  const current = adminClassSelect.value;
   adminClassSelect.innerHTML = "";
 
   if (!subject || !subject.grades) {
@@ -1199,8 +1212,12 @@ function renderAdminClassOptions() {
   }
 
   Object.entries(subject.grades).forEach(([gradeId, grade]) => {
-    adminClassSelect.append(new Option(`${gradeId} класс · ${grade.title}`, gradeId));
+    adminClassSelect.append(new Option(formatGradeOptionLabel(gradeId, grade), gradeId));
   });
+
+  if (current && subject.grades[current]) {
+    adminClassSelect.value = current;
+  }
 }
 
 function renderAdminParagraphOptions() {
@@ -1255,6 +1272,122 @@ async function renderAdminBindings() {
     });
 }
 
+async function handleGradeAdminAction(action, payload = {}) {
+  if (!isAdmin()) {
+    adminStatus.textContent = "Доступ в админку только у администратора.";
+    return false;
+  }
+
+  const subjectId = adminSubjectSelect.value;
+  if (!subjectId) {
+    adminStatus.textContent = "Выберите предмет.";
+    return false;
+  }
+
+  const response = await apiJson("/api/admin/grades", {
+    method: "POST",
+    body: {
+      subjectId,
+      action,
+      ...payload,
+    },
+  });
+
+  if (!response.ok) {
+    adminStatus.textContent = response.data?.error || "Не удалось изменить структуру классов.";
+    return false;
+  }
+
+  await reloadCatalogAndUiState();
+  await renderAdminGradeManager();
+  await renderAdminParagraphManager();
+  await renderAdminBindings();
+  adminStatus.textContent = "Структура классов обновлена.";
+  return true;
+}
+
+async function renderAdminGradeManager() {
+  if (!adminClassManagerList) return;
+
+  if (!isAdmin()) {
+    adminClassManagerList.innerHTML = "<li>Для управления нужен аккаунт администратора.</li>";
+    return;
+  }
+
+  const subjectId = adminSubjectSelect.value;
+  if (!subjectId) {
+    adminClassManagerList.innerHTML = "<li>Выберите предмет.</li>";
+    return;
+  }
+
+  const response = await apiJson(`/api/admin/grades?subjectId=${encodeURIComponent(subjectId)}`, { method: "GET" });
+  if (!response.ok) {
+    adminClassManagerList.innerHTML = `<li>${escapeHtml(response.data?.error || "Не удалось загрузить классы.")}</li>`;
+    return;
+  }
+
+  const grades = Array.isArray(response.data?.grades) ? response.data.grades : [];
+  if (!grades.length) {
+    adminClassManagerList.innerHTML = "<li>Классы отсутствуют.</li>";
+    return;
+  }
+
+  adminClassManagerList.innerHTML = "";
+  grades.forEach((grade, index) => {
+    const li = document.createElement("li");
+    li.className = "admin-grade-item";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 220;
+    input.value = grade.title || "";
+    input.className = "admin-grade-item__input";
+
+    const meta = document.createElement("p");
+    meta.className = "admin-grade-item__meta";
+    meta.textContent = `ID: ${grade.id} · параграфов: ${grade.paragraphCount ?? 0}`;
+
+    const controls = document.createElement("div");
+    controls.className = "admin-grade-item__controls";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.textContent = "Сохранить";
+    saveButton.addEventListener("click", async () => {
+      const title = String(input.value || "").trim();
+      await handleGradeAdminAction("rename", { gradeId: grade.id, title });
+    });
+
+    const upButton = document.createElement("button");
+    upButton.type = "button";
+    upButton.textContent = "↑";
+    upButton.disabled = index === 0;
+    upButton.addEventListener("click", async () => {
+      await handleGradeAdminAction("move_up", { gradeId: grade.id });
+    });
+
+    const downButton = document.createElement("button");
+    downButton.type = "button";
+    downButton.textContent = "↓";
+    downButton.disabled = index === grades.length - 1;
+    downButton.addEventListener("click", async () => {
+      await handleGradeAdminAction("move_down", { gradeId: grade.id });
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Удалить класс";
+    deleteButton.className = "danger";
+    deleteButton.addEventListener("click", async () => {
+      await handleGradeAdminAction("delete", { gradeId: grade.id });
+    });
+
+    controls.append(saveButton, upButton, downButton, deleteButton);
+    li.append(input, meta, controls);
+    adminClassManagerList.appendChild(li);
+  });
+}
+
 async function handleParagraphAdminAction(action, payload = {}) {
   if (!isAdmin()) {
     adminStatus.textContent = "Доступ в админку только у администратора.";
@@ -1284,6 +1417,7 @@ async function handleParagraphAdminAction(action, payload = {}) {
   }
 
   await reloadCatalogAndUiState();
+  await renderAdminGradeManager();
   await renderAdminBindings();
   await renderAdminParagraphManager();
   adminStatus.textContent = "Структура параграфов обновлена.";
@@ -1597,6 +1731,13 @@ async function renderAdminStats() {
 
 function getSelectedParagraphIds() {
   return Array.from(adminParagraphSelect.selectedOptions).map((option) => option.value);
+}
+
+function formatGradeOptionLabel(gradeId, grade) {
+  const title = String(grade?.title || "").trim();
+  if (!title) return `${gradeId} класс`;
+  if (/класс/i.test(title)) return title;
+  return `${gradeId} класс · ${title}`;
 }
 
 function getCurrentSubject() {

@@ -94,6 +94,12 @@ function ensureParagraphStructures(db) {
   }
 }
 
+function ensureGradeStructures(db) {
+  if (!db.gradeStructures || typeof db.gradeStructures !== "object") {
+    db.gradeStructures = {};
+  }
+}
+
 function ensureTrafficStats(db) {
   if (!db.trafficStats || typeof db.trafficStats !== "object") {
     db.trafficStats = {};
@@ -115,19 +121,31 @@ function ensureTrafficStats(db) {
 function applyParagraphOverridesToCatalog(catalog, db) {
   ensureParagraphOverrides(db);
   ensureParagraphStructures(db);
+  ensureGradeStructures(db);
   return catalog.map((subject) => {
-    if (!subject.grades) return subject;
-
     const subjectOverrides = db.paragraphOverrides[subject.id] || {};
     const subjectStructures = db.paragraphStructures[subject.id] || {};
+    const baseGrades = subject.grades && typeof subject.grades === "object" ? subject.grades : {};
+    const baseGradeEntries = Object.entries(baseGrades);
+    const structuredGrades = ensureSubjectGradeStructure(db, subject.id, baseGradeEntries);
+    if (!structuredGrades.length && !baseGradeEntries.length) {
+      return subject;
+    }
+
     const grades = Object.fromEntries(
-      Object.entries(subject.grades).map(([gradeId, grade]) => {
+      structuredGrades.map((gradeMeta, gradeIndex) => {
+        const gradeId = gradeMeta.id;
+        const baseGrade = baseGrades[gradeId] || null;
+        const gradeTitle = gradeMeta.title || baseGrade?.title || `Класс ${gradeId}`;
+        const fallbackParagraphs = Array.isArray(baseGrade?.paragraphs)
+          ? baseGrade.paragraphs
+          : createParagraphs(subject.title || "Предмет", gradeId, 0);
         const rawStructure = subjectStructures[gradeId];
         const structuredParagraphs = Array.isArray(rawStructure)
           ? rawStructure.map((item, index) => sanitizeParagraphEntity(item, index + 1)).filter(Boolean)
           : [];
         const gradeOverrides = subjectOverrides[gradeId] || {};
-        const sourceParagraphs = structuredParagraphs.length ? structuredParagraphs : grade.paragraphs || [];
+        const sourceParagraphs = structuredParagraphs.length ? structuredParagraphs : fallbackParagraphs;
         const paragraphs = sourceParagraphs.map((paragraph) => {
           const override = gradeOverrides[paragraph.id];
           if (typeof override !== "string" || !override.trim()) {
@@ -135,7 +153,7 @@ function applyParagraphOverridesToCatalog(catalog, db) {
           }
           return { ...paragraph, title: override.trim().slice(0, 220) };
         });
-        return [gradeId, { ...grade, paragraphs }];
+        return [gradeId, { title: gradeTitle, paragraphs, order: gradeIndex + 1 }];
       }),
     );
 
@@ -166,6 +184,7 @@ function loadDb() {
   ensureCatalogAccess(db);
   ensureParagraphOverrides(db);
   ensureParagraphStructures(db);
+  ensureGradeStructures(db);
   ensureTrafficStats(db);
   return db;
 }
@@ -311,6 +330,47 @@ function sanitizeParagraphEntity(raw, fallbackIndex) {
   if (!id || !title) return null;
   const chapter = String(raw.chapter || `Глава ${Math.ceil((fallbackIndex || 1) / 5)}`).trim().slice(0, 120);
   return { id, title, chapter };
+}
+
+function sanitizeGradeEntity(raw, fallbackIndex) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id || "").trim().slice(0, 80);
+  const title = String(raw.title || "").trim().slice(0, 220);
+  if (!id || !title) return null;
+  return { id, title, order: Number(raw.order) || fallbackIndex || 0 };
+}
+
+function createGradeId(subjectId, list) {
+  const used = new Set((list || []).map((item) => String(item.id || "")));
+  let attempt = 1;
+  while (attempt < 2000) {
+    const id = `${subjectId}-class-${attempt}`;
+    if (!used.has(id)) return id;
+    attempt += 1;
+  }
+  return `${subjectId}-class-${Date.now().toString(36)}`;
+}
+
+function ensureSubjectGradeStructure(db, subjectId, baseGradeEntries = null) {
+  ensureGradeStructures(db);
+  if (!Array.isArray(db.gradeStructures[subjectId])) {
+    const sourceEntries =
+      Array.isArray(baseGradeEntries) && baseGradeEntries.length
+        ? baseGradeEntries
+        : Object.entries(baseCatalog().find((item) => item.id === subjectId)?.grades || {});
+    db.gradeStructures[subjectId] = sourceEntries.map(([gradeId, grade], index) =>
+      sanitizeGradeEntity({ id: gradeId, title: grade?.title || String(gradeId), order: index + 1 }, index + 1),
+    );
+  }
+
+  const sanitized = db.gradeStructures[subjectId]
+    .map((item, index) => sanitizeGradeEntity(item, index + 1))
+    .filter(Boolean)
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+    .map((item, index) => ({ ...item, order: index + 1 }));
+
+  db.gradeStructures[subjectId] = sanitized;
+  return sanitized;
 }
 
 function createParagraphId(gradeId, list) {
@@ -1101,12 +1161,16 @@ app.delete("/api/admin/maps", requireAuth, requireAdmin, (req, res) => {
 app.get("/api/admin/catalog-access", requireAuth, requireAdmin, (_req, res) => {
   const db = loadDb();
   ensureCatalogAccess(db);
-  const subjects = baseCatalog().map((subject) => ({
-    id: subject.id,
-    title: subject.title,
-    enabled: Boolean(db.catalogAccess[subject.id]),
-    hasGrades: Boolean(subject.grades && Object.keys(subject.grades).length),
-  }));
+  const currentCatalog = catalogFromDb(db);
+  const subjects = baseCatalog().map((subject) => {
+    const enriched = currentCatalog.find((item) => item.id === subject.id) || subject;
+    return {
+      id: subject.id,
+      title: subject.title,
+      enabled: Boolean(db.catalogAccess[subject.id]),
+      hasGrades: Boolean(enriched.grades && Object.keys(enriched.grades).length),
+    };
+  });
   res.json({ subjects });
 });
 
@@ -1129,6 +1193,118 @@ app.post("/api/admin/catalog-access", requireAuth, requireAdmin, (req, res) => {
         enabled,
       },
     };
+  });
+
+  res.status(result.status).json(result.body);
+});
+
+app.get("/api/admin/grades", requireAuth, requireAdmin, (req, res) => {
+  const subjectId = String(req.query.subjectId || "");
+  if (!subjectId) {
+    res.status(400).json({ error: "Нужен subjectId." });
+    return;
+  }
+
+  const db = loadDb();
+  const subject = baseCatalog().find((item) => item.id === subjectId);
+  if (!subject) {
+    res.status(404).json({ error: "Предмет не найден." });
+    return;
+  }
+
+  const structured = ensureSubjectGradeStructure(
+    db,
+    subjectId,
+    Object.entries(subject.grades && typeof subject.grades === "object" ? subject.grades : {}),
+  );
+  const subjectFromCatalog = catalogFromDb(db).find((item) => item.id === subjectId);
+  const list = structured.map((meta, index) => {
+    const grade = subjectFromCatalog?.grades?.[meta.id];
+    return {
+      id: meta.id,
+      title: String(grade?.title || meta.title || meta.id),
+      order: index + 1,
+      paragraphCount: Array.isArray(grade?.paragraphs) ? grade.paragraphs.length : 0,
+    };
+  });
+  res.json({ grades: list });
+});
+
+app.post("/api/admin/grades", requireAuth, requireAdmin, (req, res) => {
+  const subjectId = String(req.body.subjectId || "");
+  const action = String(req.body.action || "");
+  const gradeId = String(req.body.gradeId || "");
+  const titleInput = String(req.body.title || "").trim();
+
+  if (!subjectId || !action) {
+    res.status(400).json({ error: "Нужны subjectId и action." });
+    return;
+  }
+
+  const result = mutateDb((db) => {
+    const baseSubject = baseCatalog().find((item) => item.id === subjectId);
+    if (!baseSubject) {
+      return { status: 404, body: { error: "Предмет не найден." } };
+    }
+
+    const structure = ensureSubjectGradeStructure(
+      db,
+      subjectId,
+      Object.entries(baseSubject.grades && typeof baseSubject.grades === "object" ? baseSubject.grades : {}),
+    );
+    const index = structure.findIndex((item) => item.id === gradeId);
+
+    if (action === "add") {
+      if (!titleInput || titleInput.length < 2) {
+        return { status: 400, body: { error: "Введите название класса (минимум 2 символа)." } };
+      }
+      const id = createGradeId(subjectId, structure);
+      structure.push({ id, title: titleInput.slice(0, 220), order: structure.length + 1 });
+      ensureGradeParagraphStructure(db, subjectId, id);
+      return { status: 200, body: { ok: true, action, gradeId: id } };
+    }
+
+    if (index === -1) {
+      return { status: 404, body: { error: "Класс не найден." } };
+    }
+
+    if (action === "rename") {
+      if (!titleInput || titleInput.length < 2) {
+        return { status: 400, body: { error: "Название класса должно быть не короче 2 символов." } };
+      }
+      structure[index].title = titleInput.slice(0, 220);
+      return { status: 200, body: { ok: true, action, gradeId } };
+    }
+
+    if (action === "move_up") {
+      if (index > 0) {
+        const [row] = structure.splice(index, 1);
+        structure.splice(index - 1, 0, row);
+      }
+      return { status: 200, body: { ok: true, action, gradeId } };
+    }
+
+    if (action === "move_down") {
+      if (index < structure.length - 1) {
+        const [row] = structure.splice(index, 1);
+        structure.splice(index + 1, 0, row);
+      }
+      return { status: 200, body: { ok: true, action, gradeId } };
+    }
+
+    if (action === "delete") {
+      structure.splice(index, 1);
+      if (db.paragraphStructures?.[subjectId]) {
+        delete db.paragraphStructures[subjectId][gradeId];
+      }
+      if (db.paragraphOverrides?.[subjectId]) {
+        delete db.paragraphOverrides[subjectId][gradeId];
+      }
+      db.maps = db.maps.filter((item) => !(item.subjectId === subjectId && item.gradeId === gradeId));
+      return { status: 200, body: { ok: true, action, gradeId } };
+    }
+
+    return { status: 400, body: { error: "Неизвестное действие." } };
   });
 
   res.status(result.status).json(result.body);
@@ -1166,8 +1342,8 @@ app.post("/api/admin/paragraphs", requireAuth, requireAdmin, (req, res) => {
   }
 
   const result = mutateDb((db) => {
-    const baseSubject = baseCatalog().find((item) => item.id === subjectId);
-    if (!baseSubject || !baseSubject.grades?.[gradeId]) {
+    const subject = catalogFromDb(db).find((item) => item.id === subjectId);
+    if (!subject || !subject.grades?.[gradeId]) {
       return { status: 404, body: { error: "Предмет или класс не найден." } };
     }
 

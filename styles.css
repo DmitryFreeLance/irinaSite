@@ -558,6 +558,78 @@ input {
   cursor: pointer;
 }
 
+.admin-class-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.admin-class-actions input {
+  flex: 1 1 240px;
+  min-width: 220px;
+}
+
+.admin-class-actions button {
+  border: 1px solid rgba(28, 95, 159, 0.22);
+  border-radius: 10px;
+  background: #e8f3ff;
+  color: #1f568f;
+  font-weight: 700;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.admin-grade-item {
+  margin-bottom: 10px;
+  list-style: none;
+  border: 1px solid rgba(35, 96, 157, 0.2);
+  border-radius: 12px;
+  background: rgba(246, 252, 255, 0.9);
+  padding: 8px;
+}
+
+.admin-grade-item__input {
+  width: 100%;
+  border: 1px solid rgba(49, 110, 174, 0.3);
+  border-radius: 9px;
+  padding: 9px 10px;
+  font-size: 0.95rem;
+}
+
+.admin-grade-item__meta {
+  margin: 6px 0;
+  color: #4c6f90;
+  font-size: 0.82rem;
+}
+
+.admin-grade-item__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-grade-item__controls button {
+  border: 1px solid rgba(28, 95, 159, 0.22);
+  border-radius: 9px;
+  background: #e8f3ff;
+  color: #1f568f;
+  font-weight: 700;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.admin-grade-item__controls button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.admin-grade-item__controls button.danger {
+  background: #ffe8ec;
+  border-color: rgba(171, 56, 86, 0.25);
+  color: #9d2f4d;
+}
+
 .admin-paragraph-item {
   margin-bottom: 10px;
   list-style: none;
@@ -1692,6 +1764,16 @@ input {
     width: 100%;
   }
 
+  .admin-class-actions {
+    flex-direction: column;
+  }
+
+  .admin-class-actions input,
+  .admin-class-actions button {
+    width: 100%;
+    min-width: 0;
+  }
+
   .admin-catalog-access-toggle {
     width: 100%;
   }
@@ -1710,6 +1792,11 @@ input {
   }
 
   .admin-paragraph-item__controls button {
+    flex: 1 1 calc(50% - 6px);
+    text-align: center;
+  }
+
+  .admin-grade-item__controls button {
     flex: 1 1 calc(50% - 6px);
     text-align: center;
   }

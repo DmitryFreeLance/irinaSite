@@ -68,10 +68,11 @@ function baseCatalog() {
 }
 
 function ensureCatalogAccess(db) {
+  ensureSubjectStructures(db);
   if (!db.catalogAccess || typeof db.catalogAccess !== "object") {
     db.catalogAccess = {};
   }
-  const subjects = baseCatalog();
+  const subjects = ensureSubjectStructures(db);
   subjects.forEach((subject, index) => {
     if (typeof db.catalogAccess[subject.id] === "boolean") return;
     if (Object.prototype.hasOwnProperty.call(DEFAULT_SUBJECT_ACCESS, subject.id)) {
@@ -98,6 +99,40 @@ function ensureGradeStructures(db) {
   if (!db.gradeStructures || typeof db.gradeStructures !== "object") {
     db.gradeStructures = {};
   }
+}
+
+function ensureSubjectStructures(db) {
+  if (!Array.isArray(db.subjectStructures)) {
+    db.subjectStructures = [];
+  }
+
+  const baseList = baseCatalog();
+  const existing = db.subjectStructures
+    .map((item, index) => sanitizeSubjectEntity(item, index + 1))
+    .filter(Boolean);
+
+  const existingIds = new Set(existing.map((item) => item.id));
+  baseList.forEach((subject, index) => {
+    if (existingIds.has(subject.id)) return;
+    existing.push(
+      sanitizeSubjectEntity(
+        {
+          id: subject.id,
+          title: subject.title,
+          order: index + 1,
+        },
+        index + 1,
+      ),
+    );
+  });
+
+  const sanitized = existing
+    .filter(Boolean)
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+    .map((item, index) => ({ ...item, order: index + 1 }));
+
+  db.subjectStructures = sanitized;
+  return sanitized;
 }
 
 function ensureTrafficStats(db) {
@@ -161,9 +196,20 @@ function applyParagraphOverridesToCatalog(catalog, db) {
   });
 }
 
+function buildCatalogBlueprint(db) {
+  const baseById = new Map(baseCatalog().map((item) => [item.id, item]));
+  const structured = ensureSubjectStructures(db);
+  return structured.map((item) => {
+    const base = baseById.get(item.id);
+    const subject = base ? { ...base } : { id: item.id, title: item.title, planned: true };
+    subject.title = item.title || subject.title;
+    return subject;
+  });
+}
+
 function catalogFromDb(db) {
   ensureCatalogAccess(db);
-  const catalog = baseCatalog().map((subject) => ({
+  const catalog = buildCatalogBlueprint(db).map((subject) => ({
     ...subject,
     planned: !Boolean(db.catalogAccess[subject.id]),
   }));
@@ -332,12 +378,31 @@ function sanitizeParagraphEntity(raw, fallbackIndex) {
   return { id, title, chapter };
 }
 
+function sanitizeSubjectEntity(raw, fallbackIndex) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id || "").trim().slice(0, 80);
+  const title = String(raw.title || "").trim().slice(0, 220);
+  if (!id || !title) return null;
+  return { id, title, order: Number(raw.order) || fallbackIndex || 0 };
+}
+
 function sanitizeGradeEntity(raw, fallbackIndex) {
   if (!raw || typeof raw !== "object") return null;
   const id = String(raw.id || "").trim().slice(0, 80);
   const title = String(raw.title || "").trim().slice(0, 220);
   if (!id || !title) return null;
   return { id, title, order: Number(raw.order) || fallbackIndex || 0 };
+}
+
+function createSubjectId(list) {
+  const used = new Set((list || []).map((item) => String(item.id || "")));
+  let attempt = 1;
+  while (attempt < 2000) {
+    const id = `subject-custom-${attempt}`;
+    if (!used.has(id)) return id;
+    attempt += 1;
+  }
+  return `subject-custom-${Date.now().toString(36)}`;
 }
 
 function createGradeId(subjectId, list) {
@@ -1162,11 +1227,11 @@ app.get("/api/admin/catalog-access", requireAuth, requireAdmin, (_req, res) => {
   const db = loadDb();
   ensureCatalogAccess(db);
   const currentCatalog = catalogFromDb(db);
-  const subjects = baseCatalog().map((subject) => {
+  const subjects = currentCatalog.map((subject) => {
     const enriched = currentCatalog.find((item) => item.id === subject.id) || subject;
     return {
       id: subject.id,
-      title: subject.title,
+      title: enriched.title || subject.title,
       enabled: Boolean(db.catalogAccess[subject.id]),
       hasGrades: Boolean(enriched.grades && Object.keys(enriched.grades).length),
     };
@@ -1180,7 +1245,7 @@ app.post("/api/admin/catalog-access", requireAuth, requireAdmin, (req, res) => {
 
   const result = mutateDb((db) => {
     ensureCatalogAccess(db);
-    const subject = baseCatalog().find((item) => item.id === subjectId);
+    const subject = catalogFromDb(db).find((item) => item.id === subjectId);
     if (!subject) {
       return { status: 404, body: { error: "Предмет не найден." } };
     }
@@ -1198,6 +1263,94 @@ app.post("/api/admin/catalog-access", requireAuth, requireAdmin, (req, res) => {
   res.status(result.status).json(result.body);
 });
 
+app.get("/api/admin/subjects", requireAuth, requireAdmin, (_req, res) => {
+  const db = loadDb();
+  ensureCatalogAccess(db);
+  const subjects = catalogFromDb(db).map((subject, index) => ({
+    id: subject.id,
+    title: String(subject.title || subject.id),
+    order: index + 1,
+    enabled: Boolean(db.catalogAccess?.[subject.id]),
+    hasGrades: Boolean(subject.grades && Object.keys(subject.grades).length),
+    gradeCount: subject.grades ? Object.keys(subject.grades).length : 0,
+  }));
+  res.json({ subjects });
+});
+
+app.post("/api/admin/subjects", requireAuth, requireAdmin, (req, res) => {
+  const action = String(req.body.action || "");
+  const subjectId = String(req.body.subjectId || "");
+  const titleInput = String(req.body.title || "").trim();
+
+  if (!action) {
+    res.status(400).json({ error: "Нужен action." });
+    return;
+  }
+
+  const result = mutateDb((db) => {
+    const structure = ensureSubjectStructures(db);
+    ensureCatalogAccess(db);
+    const index = structure.findIndex((item) => item.id === subjectId);
+
+    if (action === "add") {
+      if (!titleInput || titleInput.length < 2) {
+        return { status: 400, body: { error: "Введите название предмета (минимум 2 символа)." } };
+      }
+      const id = createSubjectId(structure);
+      structure.push({ id, title: titleInput.slice(0, 220), order: structure.length + 1 });
+      db.catalogAccess[id] = false;
+      ensureSubjectGradeStructure(db, id, []);
+      return { status: 200, body: { ok: true, action, subjectId: id } };
+    }
+
+    if (index === -1) {
+      return { status: 404, body: { error: "Предмет не найден." } };
+    }
+
+    if (action === "rename") {
+      if (!titleInput || titleInput.length < 2) {
+        return { status: 400, body: { error: "Название предмета должно быть не короче 2 символов." } };
+      }
+      structure[index].title = titleInput.slice(0, 220);
+      return { status: 200, body: { ok: true, action, subjectId } };
+    }
+
+    if (action === "move_up") {
+      if (index > 0) {
+        const [row] = structure.splice(index, 1);
+        structure.splice(index - 1, 0, row);
+      }
+      return { status: 200, body: { ok: true, action, subjectId } };
+    }
+
+    if (action === "move_down") {
+      if (index < structure.length - 1) {
+        const [row] = structure.splice(index, 1);
+        structure.splice(index + 1, 0, row);
+      }
+      return { status: 200, body: { ok: true, action, subjectId } };
+    }
+
+    if (action === "delete") {
+      const baseIds = new Set(baseCatalog().map((item) => item.id));
+      if (baseIds.has(subjectId)) {
+        return { status: 400, body: { error: "Базовый предмет удалить нельзя." } };
+      }
+      structure.splice(index, 1);
+      if (db.catalogAccess) delete db.catalogAccess[subjectId];
+      if (db.gradeStructures) delete db.gradeStructures[subjectId];
+      if (db.paragraphStructures) delete db.paragraphStructures[subjectId];
+      if (db.paragraphOverrides) delete db.paragraphOverrides[subjectId];
+      db.maps = db.maps.filter((item) => item.subjectId !== subjectId);
+      return { status: 200, body: { ok: true, action, subjectId } };
+    }
+
+    return { status: 400, body: { error: "Неизвестное действие." } };
+  });
+
+  res.status(result.status).json(result.body);
+});
+
 app.get("/api/admin/grades", requireAuth, requireAdmin, (req, res) => {
   const subjectId = String(req.query.subjectId || "");
   if (!subjectId) {
@@ -1206,7 +1359,7 @@ app.get("/api/admin/grades", requireAuth, requireAdmin, (req, res) => {
   }
 
   const db = loadDb();
-  const subject = baseCatalog().find((item) => item.id === subjectId);
+  const subject = catalogFromDb(db).find((item) => item.id === subjectId);
   if (!subject) {
     res.status(404).json({ error: "Предмет не найден." });
     return;
@@ -1217,7 +1370,7 @@ app.get("/api/admin/grades", requireAuth, requireAdmin, (req, res) => {
     subjectId,
     Object.entries(subject.grades && typeof subject.grades === "object" ? subject.grades : {}),
   );
-  const subjectFromCatalog = catalogFromDb(db).find((item) => item.id === subjectId);
+  const subjectFromCatalog = subject;
   const list = structured.map((meta, index) => {
     const grade = subjectFromCatalog?.grades?.[meta.id];
     return {
@@ -1242,7 +1395,7 @@ app.post("/api/admin/grades", requireAuth, requireAdmin, (req, res) => {
   }
 
   const result = mutateDb((db) => {
-    const baseSubject = baseCatalog().find((item) => item.id === subjectId);
+    const baseSubject = catalogFromDb(db).find((item) => item.id === subjectId);
     if (!baseSubject) {
       return { status: 404, body: { error: "Предмет не найден." } };
     }
@@ -1442,7 +1595,7 @@ app.post("/api/admin/paragraph-title", requireAuth, requireAdmin, (req, res) => 
   }
 
   const result = mutateDb((db) => {
-    const subject = baseCatalog().find((item) => item.id === subjectId);
+    const subject = catalogFromDb(db).find((item) => item.id === subjectId);
     if (!subject || !subject.grades?.[gradeId]) {
       return { status: 404, body: { error: "Предмет или класс не найден." } };
     }

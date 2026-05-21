@@ -57,8 +57,11 @@ const adminAddContentButton = document.querySelector("#adminAddContentButton");
 const adminAddSummaryButton = document.querySelector("#adminAddSummaryButton");
 const adminAddClassButton = document.querySelector("#adminAddClassButton");
 const adminNewClassTitle = document.querySelector("#adminNewClassTitle");
+const adminAddSubjectButton = document.querySelector("#adminAddSubjectButton");
+const adminNewSubjectTitle = document.querySelector("#adminNewSubjectTitle");
 const adminStatus = document.querySelector("#adminStatus");
 const adminBindingsList = document.querySelector("#adminBindingsList");
+const adminSubjectManagerList = document.querySelector("#adminSubjectManagerList");
 const adminClassManagerList = document.querySelector("#adminClassManagerList");
 const adminParagraphManagerList = document.querySelector("#adminParagraphManagerList");
 
@@ -126,6 +129,7 @@ const screenContentMeta = {
 };
 const YEAR_SPECIAL_PROMO_CODE = "BSTSUB100FOR1Y";
 const YEAR_SPECIAL_PRICE = 100;
+const BASE_SUBJECT_IDS = new Set(["history", "biology", "geography", "physics", "chemistry"]);
 const PERSONAL_DATA_CONSENT_TEXT = [
   "Нажимая «Согласен(а), скачать оферту», вы даете согласие на обработку персональных данных в соответствии с Федеральным законом №152-ФЗ «О персональных данных».",
   "Оператор персональных данных: Акифьева Ирина Вячеславовна, email: UMKarta@mail.ru.",
@@ -222,6 +226,7 @@ function setupMenuTabs() {
       }
 
       if (screen === "admin") {
+        renderAdminSubjectManager();
         renderAdminGradeManager();
         renderAdminBindings();
         renderAdminParagraphManager();
@@ -1035,6 +1040,7 @@ function closeFullscreenMap() {
 
 function setupAdminPanel() {
   adminSubjectSelect.addEventListener("change", () => {
+    renderAdminSubjectManager();
     renderAdminClassOptions();
     renderAdminParagraphOptions();
     renderAdminBindings();
@@ -1180,10 +1186,16 @@ function setupAdminPanel() {
     const ok = await handleGradeAdminAction("add", { title });
     if (ok && adminNewClassTitle) adminNewClassTitle.value = "";
   });
+
+  adminAddSubjectButton?.addEventListener("click", async () => {
+    const title = String(adminNewSubjectTitle?.value || "").trim();
+    const ok = await handleSubjectAdminAction("add", { title });
+    if (ok && adminNewSubjectTitle) adminNewSubjectTitle.value = "";
+  });
 }
 
 function rebuildAdminSelectors() {
-  const adminSubjects = appState.subjects.filter((subject) => Boolean(subject.grades));
+  const adminSubjects = appState.subjects;
   const current = adminSubjectSelect.value;
   adminSubjectSelect.innerHTML = "";
 
@@ -1269,7 +1281,116 @@ async function renderAdminBindings() {
       const li = document.createElement("li");
       li.textContent = `${record.paragraphId} — ${record.sourceName} — обновлено ${formatDateTime(record.updatedAt)}`;
       adminBindingsList.appendChild(li);
+  });
+}
+
+async function handleSubjectAdminAction(action, payload = {}) {
+  if (!isAdmin()) {
+    adminStatus.textContent = "Доступ в админку только у администратора.";
+    return false;
+  }
+
+  const response = await apiJson("/api/admin/subjects", {
+    method: "POST",
+    body: {
+      action,
+      ...payload,
+    },
+  });
+
+  if (!response.ok) {
+    adminStatus.textContent = response.data?.error || "Не удалось изменить структуру предметов.";
+    return false;
+  }
+
+  await reloadCatalogAndUiState();
+  await renderAdminSubjectManager();
+  await renderAdminGradeManager();
+  await renderAdminParagraphManager();
+  await renderAdminBindings();
+  await renderAdminCatalogAccess();
+  adminStatus.textContent = "Структура предметов обновлена.";
+  return true;
+}
+
+async function renderAdminSubjectManager() {
+  if (!adminSubjectManagerList) return;
+  if (!isAdmin()) {
+    adminSubjectManagerList.innerHTML = "<li>Для управления нужен аккаунт администратора.</li>";
+    return;
+  }
+
+  const response = await apiJson("/api/admin/subjects", { method: "GET" });
+  if (!response.ok) {
+    adminSubjectManagerList.innerHTML = `<li>${escapeHtml(response.data?.error || "Не удалось загрузить предметы.")}</li>`;
+    return;
+  }
+
+  const subjects = Array.isArray(response.data?.subjects) ? response.data.subjects : [];
+  if (!subjects.length) {
+    adminSubjectManagerList.innerHTML = "<li>Предметы отсутствуют.</li>";
+    return;
+  }
+
+  adminSubjectManagerList.innerHTML = "";
+  subjects.forEach((subject, index) => {
+    const li = document.createElement("li");
+    li.className = "admin-grade-item";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 220;
+    input.value = subject.title || "";
+    input.className = "admin-grade-item__input";
+
+    const meta = document.createElement("p");
+    meta.className = "admin-grade-item__meta";
+    const status = subject.enabled ? "открыт" : "закрыт";
+    meta.textContent = `ID: ${subject.id} · ${status} · классов: ${subject.gradeCount ?? 0}`;
+
+    const controls = document.createElement("div");
+    controls.className = "admin-grade-item__controls";
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.textContent = "Сохранить";
+    saveButton.addEventListener("click", async () => {
+      const title = String(input.value || "").trim();
+      await handleSubjectAdminAction("rename", { subjectId: subject.id, title });
     });
+
+    const upButton = document.createElement("button");
+    upButton.type = "button";
+    upButton.textContent = "↑";
+    upButton.disabled = index === 0;
+    upButton.addEventListener("click", async () => {
+      await handleSubjectAdminAction("move_up", { subjectId: subject.id });
+    });
+
+    const downButton = document.createElement("button");
+    downButton.type = "button";
+    downButton.textContent = "↓";
+    downButton.disabled = index === subjects.length - 1;
+    downButton.addEventListener("click", async () => {
+      await handleSubjectAdminAction("move_down", { subjectId: subject.id });
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Удалить предмет";
+    deleteButton.className = "danger";
+    if (BASE_SUBJECT_IDS.has(subject.id)) {
+      deleteButton.disabled = true;
+      deleteButton.title = "Базовый предмет нельзя удалить.";
+    }
+    deleteButton.addEventListener("click", async () => {
+      await handleSubjectAdminAction("delete", { subjectId: subject.id });
+    });
+
+    controls.append(saveButton, upButton, downButton, deleteButton);
+    li.append(input, meta, controls);
+    adminSubjectManagerList.appendChild(li);
+  });
 }
 
 async function handleGradeAdminAction(action, payload = {}) {
@@ -1299,6 +1420,7 @@ async function handleGradeAdminAction(action, payload = {}) {
   }
 
   await reloadCatalogAndUiState();
+  await renderAdminSubjectManager();
   await renderAdminGradeManager();
   await renderAdminParagraphManager();
   await renderAdminBindings();
@@ -1417,6 +1539,7 @@ async function handleParagraphAdminAction(action, payload = {}) {
   }
 
   await reloadCatalogAndUiState();
+  await renderAdminSubjectManager();
   await renderAdminGradeManager();
   await renderAdminBindings();
   await renderAdminParagraphManager();

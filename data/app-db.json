@@ -32,5 +32,32 @@
     },
     "recent": []
   },
-  "gradeStructures": {}
+  "gradeStructures": {},
+  "subjectStructures": [
+    {
+      "id": "history",
+      "title": "История",
+      "order": 1
+    },
+    {
+      "id": "biology",
+      "title": "Биология",
+      "order": 2
+    },
+    {
+      "id": "geography",
+      "title": "География",
+      "order": 3
+    },
+    {
+      "id": "physics",
+      "title": "Физика",
+      "order": 4
+    },
+    {
+      "id": "chemistry",
+      "title": "Химия",
+      "order": 5
+    }
+  ]
 }
